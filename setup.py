@@ -12,10 +12,10 @@ with open("requirements.txt", "r", encoding="utf-8") as fh:
     requirements = [line.strip() for line in fh if line.strip() and not line.startswith("#")]
 
 setup(
-    name="ssp-backend",
-    version="1.0.0",
+    name="focus-island",
+    version="2.0.0",
     author="SSP Team",
-    description="Smart Study Spot - 多功能人脸识别专注检测后端系统",
+    description="Focus Island - 多功能人脸识别专注检测后端系统",
     long_description=long_description,
     long_description_content_type="text/markdown",
     packages=find_packages(where="src"),
@@ -39,7 +39,7 @@ setup(
     },
     entry_points={
         "console_scripts": [
-            "ssp-backend=ssp_backend.main:main",
+            "focus-island=focus_island.main:main",
         ],
     },
     classifiers=[

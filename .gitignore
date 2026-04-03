@@ -1,0 +1,28 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# Node (frontend)
+node_modules/
+
+# 模型缓存（首次自动下载，无需提交）
+models/
+~/.uniface/
+
+# 用户人脸数据
+user_faces/
+
+# IDE / AI 辅助工具
+.claude/
+.gitnexus/
+.git/
+
+# AI Agent 配置（本地专用）
+Agents.md
+Claude.md
+.cursor/
+cursorInfo.json

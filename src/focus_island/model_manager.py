@@ -8,6 +8,19 @@ Author: SSP Team
 
 from __future__ import annotations
 
+import os
+
+# 设置模型路径为项目相对路径 (必须在 import uniface 之前设置)
+# 项目结构: e:\project\SSP\focus_island\models\
+# __file__ = e:\project\SSP\focus_island\src\focus_island\model_manager.py
+# 向上三级: src -> focus_island(项目根目录) -> e:\project\SSP
+# 然后进入 focus_island/models
+MODEL_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+    "models"
+)
+os.environ["UNIFACE_CACHE_DIR"] = MODEL_DIR
+
 import logging
 import time
 from dataclasses import dataclass, field
@@ -107,6 +120,9 @@ class ModelManager:
         
         self._load_start_time = time.time()
         
+        # 检查模型文件是否存在
+        self._ensure_models_exist()
+        
         # 1. 加载人脸检测器
         logger.info("Loading face detector...")
         t0 = time.time()
@@ -140,6 +156,27 @@ class ModelManager:
         self._models_loaded = True
         self._total_load_time_ms = (time.time() - self._load_start_time) * 1000
         logger.info(f"All models loaded in {self._total_load_time_ms:.1f}ms total")
+    
+    def _ensure_models_exist(self) -> None:
+        """确保模型文件存在"""
+        required_models = {
+            "retinaface_mnet_v2.onnx": "Face Detection",
+            "arcface_mnet.onnx": "Face Recognition",
+            "2d_106.onnx": "Landmark Detection",
+            "headpose_resnet18.onnx": "Head Pose Estimation"
+        }
+        
+        missing = []
+        for model_file, desc in required_models.items():
+            model_path = os.path.join(MODEL_DIR, model_file)
+            if not os.path.exists(model_path):
+                missing.append((model_file, desc))
+        
+        if missing:
+            logger.warning("Some models are missing:")
+            for model_file, desc in missing:
+                logger.warning(f"  - {model_file} ({desc})")
+            logger.warning(f"Please download models to: {MODEL_DIR}")
     
     def detect_faces(self, image: np.ndarray) -> list:
         """

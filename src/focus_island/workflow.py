@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 import time
+import os
 from typing import Optional, Callable, Any
 from dataclasses import dataclass, field
 from enum import Enum
@@ -41,6 +42,159 @@ from .websocket_server import WebSocketServer, WSMessage
 
 
 logger = logging.getLogger(__name__)
+
+
+# ==================== 国际化支持 ====================
+
+class I18n:
+    """国际化支持类"""
+    
+    _current_locale = "zh"
+    _translations = {
+        "zh": {
+            # 状态
+            "state_idle": "空闲",
+            "state_focused": "专注中",
+            "state_warning": "偏离警告",
+            "state_interrupted": "已中断",
+            "state_paused": "已暂停",
+            
+            # 警告原因
+            "warning_none": "无",
+            "warning_head_away": "头部偏离",
+            "warning_eyes_closed": "眼睛闭上",
+            "warning_no_face": "未检测到人脸",
+            
+            # 提示信息
+            "no_face_detected": "未检测到人脸",
+            "face_saved": "人脸信息已保存",
+            "identity_verified": "身份已验证",
+            "cheating_detected": "检测到换人",
+            "session_started": "专注已开始",
+            "session_ended": "专注已结束",
+            "face_not_bound": "请先绑定人脸",
+            "face_bound": "人脸绑定成功",
+            "verification_failed": "人脸验证失败",
+            "face_mismatch": "人脸不匹配",
+            "similarity_low": "相似度太低",
+            
+            # 按钮和标签
+            "btn_start": "开始专注",
+            "btn_stop": "结束专注",
+            "btn_pause": "暂停",
+            "btn_resume": "继续",
+            "btn_bind": "绑定人脸",
+            "btn_verify": "验证人脸",
+            "btn_camera_on": "开启摄像头",
+            "btn_camera_off": "关闭摄像头",
+            
+            # 统计
+            "stats_points": "积分",
+            "stats_focus_time": "专注时长",
+            "stats_streak": "连续专注",
+            
+            # 错误
+            "error_no_face": "请确保正对摄像头",
+            "error_face_not_bound": "请先绑定人脸",
+            "error_face_detected": "请先点击开始"
+        },
+        "en": {
+            # States
+            "state_idle": "Idle",
+            "state_focused": "Focused",
+            "state_warning": "Warning",
+            "state_interrupted": "Interrupted",
+            "state_paused": "Paused",
+            
+            # Warning reasons
+            "warning_none": "None",
+            "warning_head_away": "Head Away",
+            "warning_eyes_closed": "Eyes Closed",
+            "warning_no_face": "No Face",
+            
+            # Messages
+            "no_face_detected": "No face detected",
+            "face_saved": "Face data saved",
+            "identity_verified": "Identity verified",
+            "cheating_detected": "Cheating detected",
+            "session_started": "Session started",
+            "session_ended": "Session ended",
+            "face_not_bound": "Please bind face first",
+            "face_bound": "Face bound successfully",
+            "verification_failed": "Verification failed",
+            "face_mismatch": "Face mismatch",
+            "similarity_low": "Similarity too low",
+            
+            # Buttons and labels
+            "btn_start": "Start Focus",
+            "btn_stop": "Stop",
+            "btn_pause": "Pause",
+            "btn_resume": "Resume",
+            "btn_bind": "Bind Face",
+            "btn_verify": "Verify Face",
+            "btn_camera_on": "Start Camera",
+            "btn_camera_off": "Stop Camera",
+            
+            # Stats
+            "stats_points": "Points",
+            "stats_focus_time": "Focus Time",
+            "stats_streak": "Streak",
+            
+            # Errors
+            "error_no_face": "Please face the camera",
+            "error_face_not_bound": "Please bind your face first",
+            "error_face_detected": "Please click Start first"
+        }
+    }
+    
+    @classmethod
+    def set_locale(cls, locale: str) -> None:
+        """设置当前语言"""
+        if locale in cls._translations:
+            cls._current_locale = locale
+            logger.info(f"Locale set to: {locale}")
+    
+    @classmethod
+    def get_locale(cls) -> str:
+        """获取当前语言"""
+        return cls._current_locale
+    
+    @classmethod
+    def t(cls, key: str, **kwargs) -> str:
+        """翻译文本"""
+        text = cls._translations.get(cls._current_locale, {}).get(key, key)
+        
+        # 支持格式化
+        if kwargs:
+            try:
+                return text.format(**kwargs)
+            except (KeyError, ValueError):
+                return text
+        
+        return text
+    
+    @classmethod
+    def get_state_text(cls, state: str) -> str:
+        """获取状态文本"""
+        key_map = {
+            "idle": "state_idle",
+            "focused": "state_focused",
+            "warning": "state_warning",
+            "interrupted": "state_interrupted",
+            "paused": "state_paused"
+        }
+        return cls.t(key_map.get(state, "state_idle"))
+    
+    @classmethod
+    def get_warning_text(cls, reason: str) -> str:
+        """获取警告原因文本"""
+        key_map = {
+            "none": "warning_none",
+            "head_away": "warning_head_away",
+            "eyes_closed": "warning_eyes_closed",
+            "no_face": "warning_no_face"
+        }
+        return cls.t(key_map.get(reason, "warning_none"))
 
 
 class WorkFlowPhase(Enum):
@@ -235,29 +389,36 @@ class FocusWorkFlow:
         
         return system_info
     
-    def bind_user(
+    def verify_face(
         self,
         image: np.ndarray,
         user_id: str,
-        seat_id: str = "default"
+        language: str = "zh"
     ) -> dict:
         """
-        绑定用户身份 (阶段一核心)
+        验证人脸（不保存，不开始专注）
         
-        当用户点击"开始专注"时:
+        流程:
         1. 检测人脸
-        2. 提取512维特征向量
-        3. 绑定到座位
+        2. 提取特征向量
+        3. 与本地保存的人脸对比
+        4. 返回验证结果
         
         Args:
             image: 当前帧图像
-            user_id: 用户ID
-            seat_id: 座位ID
+            user_id: 用户ID（邮箱前缀）
+            language: 语言设置
             
         Returns:
-            绑定结果
+            验证结果:
+            - is_verified: 是否验证通过
+            - is_bound: 用户是否已绑定人脸
+            - similarity: 相似度
+            - message: 提示信息
         """
-        logger.info(f"Binding user: user_id={user_id}, seat_id={seat_id}")
+        I18n.set_locale(language)
+        
+        logger.info(f"Verifying face: user_id={user_id}")
         
         # 检测人脸
         faces = self.model_manager.detect_faces(image)
@@ -265,7 +426,11 @@ class FocusWorkFlow:
         if not faces:
             return {
                 "success": False,
-                "error": "No face detected"
+                "is_verified": False,
+                "is_bound": self.authenticator.has_bound_face(user_id),
+                "similarity": 0.0,
+                "error": I18n.t("no_face_detected"),
+                "error_code": "NO_FACE"
             }
         
         # 选择最大/最居中的人脸
@@ -275,26 +440,254 @@ class FocusWorkFlow:
         if bbox is None:
             return {
                 "success": False,
-                "error": "Failed to select target face"
+                "is_verified": False,
+                "is_bound": self.authenticator.has_bound_face(user_id),
+                "similarity": 0.0,
+                "error": I18n.t("error_no_face"),
+                "error_code": "SELECT_FAILED"
             }
         
         # 提取特征向量
+        embedding = None
+        for face in faces:
+            if np.allclose(face.bbox, bbox, atol=1.0):
+                embedding, _ = self.model_manager.extract_face_embedding(image, face)
+                break
+        
+        if embedding is None:
+            return {
+                "success": False,
+                "is_verified": False,
+                "is_bound": self.authenticator.has_bound_face(user_id),
+                "similarity": 0.0,
+                "error": I18n.t("error_no_face"),
+                "error_code": "NO_EMBEDDING"
+            }
+        
+        # 与本地保存的人脸对比
+        verification_result = self.authenticator.verify_face(
+            current_embedding=embedding,
+            user_id=user_id
+        )
+        
+        logger.info(f"Verification result: {verification_result}")
+        
+        return {
+            "success": True,
+            "is_verified": verification_result.get("is_verified", False),
+            "is_bound": verification_result.get("is_bound", False),
+            "similarity": verification_result.get("similarity", 0.0),
+            "matched_user": verification_result.get("matched_user"),
+            "message": verification_result.get("message", "")
+        }
+    
+    def bind_face(
+        self,
+        image: np.ndarray,
+        user_id: str,
+        language: str = "zh"
+    ) -> dict:
+        """
+        绑定人脸（保存到本地）
+        
+        流程:
+        1. 检测人脸
+        2. 提取特征向量
+        3. 保存到本地文件夹
+        4. 返回绑定结果
+        
+        注意: 一个账号只能绑定一个人脸，重复绑定会覆盖
+        
+        Args:
+            image: 当前帧图像
+            user_id: 用户ID（邮箱前缀）
+            language: 语言设置
+            
+        Returns:
+            绑定结果:
+            - success: 是否成功
+            - is_bound: 是否已绑定
+            - folder: 保存的文件夹路径
+        """
+        I18n.set_locale(language)
+        
+        logger.info(f"Binding face: user_id={user_id}")
+        
+        # 检测人脸
+        faces = self.model_manager.detect_faces(image)
+        
+        if not faces:
+            return {
+                "success": False,
+                "is_bound": False,
+                "error": I18n.t("no_face_detected"),
+                "error_code": "NO_FACE"
+            }
+        
+        # 选择最大/最居中的人脸
+        self.face_selector.update_image_params(image.shape[1], image.shape[0])
+        bbox = self.face_selector.select_target_face(faces)
+        
+        if bbox is None:
+            return {
+                "success": False,
+                "is_bound": self.authenticator.has_bound_face(user_id),
+                "error": I18n.t("error_no_face"),
+                "error_code": "SELECT_FAILED"
+            }
+        
+        # 提取特征向量和对齐人脸
+        embedding = None
+        aligned_face = None
         for face in faces:
             if np.allclose(face.bbox, bbox, atol=1.0):
                 embedding, aligned_face = self.model_manager.extract_face_embedding(image, face)
                 break
-        else:
+        
+        if embedding is None:
             return {
                 "success": False,
-                "error": "Face not found"
+                "is_bound": self.authenticator.has_bound_face(user_id),
+                "error": I18n.t("error_no_face"),
+                "error_code": "NO_EMBEDDING"
             }
         
-        # 绑定用户
-        profile = self.authenticator.bind_user(
+        # 检查是否已绑定过
+        was_bound = self.authenticator.has_bound_face(user_id)
+        
+        # 保存人脸数据到本地文件夹
+        save_result = self.authenticator.save_user_face_data(
             user_id=user_id,
-            seat_id=seat_id,
-            embedding=embedding
+            face_image=aligned_face,
+            embedding=embedding,
+            metadata={
+                "bound_at": datetime.now().isoformat(),
+                "was_bound": was_bound
+            }
         )
+        
+        logger.info(f"Face bound: {save_result}")
+        
+        return {
+            "success": save_result.get("success", False),
+            "is_bound": True,
+            "was_bound": was_bound,
+            "folder": save_result.get("folder", ""),
+            "safe_name": save_result.get("safe_name", ""),
+            "message": I18n.t("face_saved") if save_result.get("success") else save_result.get("error", "Save failed")
+        }
+    
+    def start_focus(
+        self,
+        image: np.ndarray,
+        user_id: str,
+        seat_id: str = "default",
+        language: str = "zh"
+    ) -> dict:
+        """
+        开始专注检测
+        
+        前提条件:
+        1. 用户必须已绑定人脸
+        2. 当前人脸必须通过验证
+        
+        流程:
+        1. 验证人脸
+        2. 初始化会话管理器
+        3. 更新工作流状态
+        
+        Args:
+            image: 当前帧图像
+            user_id: 用户ID（邮箱前缀）
+            seat_id: 座位ID
+            language: 语言设置
+            
+        Returns:
+            开始结果:
+            - success: 是否成功
+            - is_verified: 验证是否通过
+            - is_bound: 是否已绑定
+            - session_id: 会话ID
+        """
+        I18n.set_locale(language)
+        
+        logger.info(f"Starting focus: user_id={user_id}, seat_id={seat_id}")
+        
+        # 先验证人脸
+        faces = self.model_manager.detect_faces(image)
+        
+        if not faces:
+            return {
+                "success": False,
+                "is_verified": False,
+                "is_bound": self.authenticator.has_bound_face(user_id),
+                "error": I18n.t("no_face_detected"),
+                "error_code": "NO_FACE"
+            }
+        
+        # 选择目标人脸
+        self.face_selector.update_image_params(image.shape[1], image.shape[0])
+        bbox = self.face_selector.select_target_face(faces)
+        
+        if bbox is None:
+            return {
+                "success": False,
+                "is_verified": False,
+                "is_bound": self.authenticator.has_bound_face(user_id),
+                "error": I18n.t("error_no_face"),
+                "error_code": "SELECT_FAILED"
+            }
+        
+        # 提取特征向量
+        embedding = None
+        for face in faces:
+            if np.allclose(face.bbox, bbox, atol=1.0):
+                embedding, _ = self.model_manager.extract_face_embedding(image, face)
+                break
+        
+        if embedding is None:
+            return {
+                "success": False,
+                "is_verified": False,
+                "is_bound": self.authenticator.has_bound_face(user_id),
+                "error": I18n.t("error_no_face"),
+                "error_code": "NO_EMBEDDING"
+            }
+        
+        # 验证人脸
+        verification_result = self.authenticator.verify_face(
+            current_embedding=embedding,
+            user_id=user_id
+        )
+        
+        if not verification_result.get("is_verified", False):
+            return {
+                "success": False,
+                "is_verified": False,
+                "is_bound": verification_result.get("is_bound", False),
+                "similarity": verification_result.get("similarity", 0.0),
+                "error": verification_result.get("message", "Verification failed"),
+                "error_code": "VERIFICATION_FAILED"
+            }
+        
+        # 检查是否已绑定
+        if not self.authenticator.has_bound_face(user_id):
+            return {
+                "success": False,
+                "is_verified": True,
+                "is_bound": False,
+                "error": I18n.t("error_face_not_bound"),
+                "error_code": "NOT_BOUND"
+            }
+        
+        # 绑定用户身份（用于后续防作弊验证）
+        user_data = self.authenticator.load_user_face_data(user_id)
+        if user_data:
+            self.authenticator.bind_user(
+                user_id=user_id,
+                seat_id=seat_id,
+                embedding=user_data["embedding"]
+            )
         
         # 初始化会话管理器
         self.session_manager = SessionManager(
@@ -317,19 +710,17 @@ class FocusWorkFlow:
         self.anti_spoofing.reset()
         
         logger.info("=" * 60)
-        logger.info(f"PHASE 2: PERCEPTION - User bound successfully")
-        logger.info(f"Session ID: {self.session_manager.session_id}")
+        logger.info(f"FOCUS STARTED: user={user_id}, session={self.session_manager.session_id}")
         logger.info("=" * 60)
-        
-        self._emit("phase_change", WorkFlowPhase.PERCEPTION, profile.to_dict())
         
         return {
             "success": True,
+            "is_verified": True,
+            "is_bound": True,
             "session_id": self.session_manager.session_id,
             "user_id": user_id,
             "seat_id": seat_id,
-            "embedding_norm": float(np.linalg.norm(embedding)),
-            "message": "User bound successfully"
+            "message": I18n.t("session_started")
         }
     
     def process_frame(self, image: np.ndarray) -> Optional[dict]:
@@ -484,8 +875,23 @@ class FocusWorkFlow:
                 "fps": 1.0 / max(delta_time, 0.001)
             },
             "perception": perception.to_dict(),
-            "session": self.session_manager.get_summary() if self.session_manager else None
+            "session": session_result if session_result else None,
+            # 国际化状态文本
+            "i18n": {
+                "state_text": I18n.get_state_text(session_result.get("state", "idle") if session_result else "idle"),
+                "warning_text": I18n.get_warning_text(session_result.get("warning_reason", "none") if session_result else "none"),
+                "language": I18n.get_locale()
+            }
         }
+        
+        # 如果有统计信息，添加国际化文本
+        if session_result and "stats" in session_result:
+            stats = session_result["stats"]
+            stats["i18n"] = {
+                "points_label": I18n.t("stats_points"),
+                "focus_time_label": I18n.t("stats_focus_time"),
+                "streak_label": I18n.t("stats_streak")
+            }
         
         # 触发回调
         self._emit("frame_result", result)

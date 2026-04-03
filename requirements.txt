@@ -1,0 +1,41 @@
+# SSP Backend 依赖
+# Smart Study Spot - 多功能人脸识别专注检测后端
+
+# 核心依赖
+numpy>=1.24.0
+opencv-python>=4.8.0
+pyyaml>=6.0
+
+# UniFace 人脸分析库
+# 建议使用 GPU 版本以获得更好的性能
+uniface>=3.0.0
+
+# ONNX Runtime (如果需要 GPU 支持)
+# pip install onnxruntime-gpu
+onnxruntime>=1.16.0
+
+# WebSocket 服务
+websockets>=12.0
+
+# REST API 服务
+fastapi>=0.104.0
+uvicorn>=0.24.0
+
+# 图像处理
+Pillow>=10.0.0
+
+# 数据序列化
+pydantic>=2.0.0
+
+# 可选: 日志和监控
+python-json-logger>=2.0.0
+
+# 可选: 数据库 (SQLite)
+# SQLite3 是 Python 内置的，无需额外安装
+
+# 开发依赖
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+black>=23.0
+ruff>=0.1.0
+mypy>=1.7.0

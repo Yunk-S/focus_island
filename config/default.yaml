@@ -1,0 +1,155 @@
+# SSP Backend 配置文件
+# Smart Study Spot - 多功能人脸识别后端配置
+
+# ==================== 系统设置 ====================
+system:
+  # 运行模式: "camera", "video", "stream"
+  mode: "camera"
+  # 日志级别: DEBUG, INFO, WARNING, ERROR
+  log_level: "INFO"
+  # CUDA设备编号 (默认0)
+  cuda_device: 0
+
+# ==================== 视频源配置 ====================
+source:
+  # 摄像头ID (0为默认摄像头)
+  camera_id: 0
+  # 视频文件路径 (mode为video时使用)
+  video_path: ""
+  # 帧率限制 (0表示不限制)
+  max_fps: 30
+  # 是否水平翻转画面 ( webcam 镜像)
+  flip_horizontal: true
+
+# ==================== 人脸检测配置 ====================
+detection:
+  # 检测器类型: "retinaface", "scrfd", "yolov8face"
+  detector_type: "retinaface"
+  # 置信度阈值
+  confidence_threshold: 0.5
+  # NMS阈值
+  nms_threshold: 0.4
+  # 最大检测人脸数量
+  max_faces: 1
+  # 输入图像大小
+  input_size: [640, 640]
+
+# ==================== 头部姿态估计配置 ====================
+headpose:
+  # 模型类型: resnet18, resnet34, resnet50, mobilenet_v2, mobilenet_v3_small, mobilenet_v3_large
+  model_type: "resnet18"
+  # Pitch角度阈值 (度) - 上下看
+  pitch_threshold: 20.0
+  # Yaw角度阈值 (度) - 左右看
+  yaw_threshold: 25.0
+  # Roll角度阈值 (度) - 侧头 (不作为否决条件)
+  roll_threshold: 30.0
+
+# ==================== 眼部状态检测 (EAR) 配置 ====================
+ear:
+  # EAR阈值 - 低于此值视为闭眼
+  threshold: 0.18
+  # 连续闭眼帧数阈值 - 超过此值触发警告
+  consecutive_frames_threshold: 2
+  # 左眼关键点索引 (相对于106点 landmarks)
+  left_eye_indices: [63, 64, 65, 66, 67, 68]
+  # 右眼关键点索引
+  right_eye_indices: [72, 73, 74, 75, 76, 77]
+
+# ==================== 专注状态机配置 ====================
+focus_fsm:
+  # 宽容时间 (秒) - 偏离或闭眼后给定的恢复时间
+  grace_period_seconds: 5.0
+  # 最小专注时长 (秒) - 计入积分的最小专注时间
+  min_focus_duration: 1.0
+  # 状态检查间隔 (秒)
+  state_check_interval: 0.1
+
+# ==================== 计分系统配置 ====================
+scoring:
+  # 每分钟基础积分
+  points_per_minute: 10
+  # 里程碑配置
+  milestones:
+    - duration_minutes: 25
+      bonus_points: 50
+    - duration_minutes: 50
+      bonus_points: 150
+    - duration_minutes: 90
+      bonus_points: 300
+  # 每日积分上限
+  daily_limit: 500
+
+# ==================== WebSocket 服务配置 ====================
+websocket:
+  # 是否启用
+  enabled: true
+  # 监听地址
+  host: "0.0.0.0"
+  # 监听端口
+  port: 8765
+  # 最大连接数
+  max_connections: 10
+  # 心跳间隔 (秒)
+  heartbeat_interval: 30
+  # 消息队列大小
+  message_queue_size: 100
+
+# ==================== REST API 配置 ====================
+api:
+  # 是否启用
+  enabled: true
+  # 监听地址
+  host: "0.0.0.0"
+  # 监听端口
+  port: 8000
+  # 是否启用CORS
+  cors_enabled: true
+  # 允许的 origins
+  cors_origins: ["*"]
+
+# ==================== 视频流推拉配置 ====================
+stream:
+  # 是否启用RTSP推流
+  rtsp_enabled: false
+  # RTSP推流地址
+  rtsp_url: ""
+  # 是否启用HTTP推流
+  http_enabled: false
+  # HTTP推流端口
+  http_port: 8554
+
+# ==================== 数据存储配置 ====================
+storage:
+  # 是否启用SQLite存储
+  sqlite_enabled: true
+  # 数据库文件路径
+  db_path: "data/ssp.db"
+  # 会话数据过期时间 (天)
+  session_expiry_days: 30
+  # 是否记录详细日志
+  detailed_logging: true
+
+# ==================== 可视化配置 ====================
+visualization:
+  # 是否启用实时可视化
+  enabled: true
+  # 显示窗口名称
+  window_name: "SSP - Smart Study Spot"
+  # 绘制头部姿态立方体
+  draw_headpose_cube: true
+  # 绘制面部关键点
+  draw_landmarks: false
+  # 绘制状态信息
+  draw_status: true
+  # 信息显示位置
+  info_position: [10, 30]
+
+# ==================== 性能优化配置 ====================
+performance:
+  # 跳帧处理 (1表示每帧都处理)
+  skip_frames: 1
+  # 是否使用半精度推理
+  half_precision: false
+  # ONNX Runtime执行提供者: CUDA, CPU
+  execution_provider: "CUDA"

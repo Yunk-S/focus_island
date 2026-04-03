@@ -1,0 +1,54 @@
+0 verbose cli D:\Node\node.exe D:\Node\node_modules\npm\bin\npm-cli.js
+1 info using npm@11.9.0
+2 info using node@v24.14.0
+3 silly config load:file:D:\Node\node_modules\npm\npmrc
+4 silly config load:file:C:\Users\asus\.npmrc
+5 silly config load:file:C:\Users\asus\AppData\Roaming\npm\etc\npmrc
+6 verbose title npm install
+7 verbose argv "install" "--force" "--cache" "E:\\project\\SSP\\ssp_backend\\%USERPROFILE%\\npm-cache" "--prefer-offline" "false" "--prefer-online" "false" "--offline" "false" "--no-progress" "--no-save" "--no-audit" "--include" "dev" "--include" "peer" "--include" "optional" "--no-package-lock-only" "--no-dry-run"
+8 verbose logfile logs-max:10 dir:E:\project\SSP\ssp_backend\%USERPROFILE%\npm-cache\_logs\2026-04-03T02_10_14_498Z-
+9 verbose logfile E:\project\SSP\ssp_backend\%USERPROFILE%\npm-cache\_logs\2026-04-03T02_10_14_498Z-debug-0.log
+10 warn using --force Recommended protections disabled.
+11 silly packumentCache heap:4496293888 maxSize:1124073472 maxEntrySize:562036736
+12 silly logfile done cleaning log files
+13 silly idealTree buildDeps
+14 silly placeDep ROOT tree-sitter-dart@1.0.0 OK for:  want: file:E:/project/SSP/ssp_backend/%USERPROFILE%/npm-cache/_cacache/tmp/git-cloneLLTlKS
+15 silly reify mark retired [
+15 silly reify   'C:\\Users\\asus\\AppData\\Roaming\\npm\\node_modules\\tree-sitter-dart'
+15 silly reify ]
+16 silly reify moves {
+16 silly reify   'C:\\Users\\asus\\AppData\\Roaming\\npm\\node_modules\\tree-sitter-dart': 'C:\\Users\\asus\\AppData\\Roaming\\npm\\node_modules\\.tree-sitter-dart-cNYBYWKF'
+16 silly reify }
+17 info run tree-sitter-dart@1.0.0 install E:/project/SSP/ssp_backend/%USERPROFILE%/npm-cache/_cacache/tmp/git-cloneLLTlKS node-gyp-build
+18 info run tree-sitter-dart@1.0.0 install { code: 1, signal: null }
+19 verbose stack Error: command failed
+19 verbose stack     at promiseSpawn (D:\Node\node_modules\npm\node_modules\@npmcli\promise-spawn\lib\index.js:22:22)
+19 verbose stack     at spawnWithShell (D:\Node\node_modules\npm\node_modules\@npmcli\promise-spawn\lib\index.js:124:10)
+19 verbose stack     at promiseSpawn (D:\Node\node_modules\npm\node_modules\@npmcli\promise-spawn\lib\index.js:12:12)
+19 verbose stack     at runScriptPkg (D:\Node\node_modules\npm\node_modules\@npmcli\run-script\lib\run-script-pkg.js:79:13)
+19 verbose stack     at runScript (D:\Node\node_modules\npm\node_modules\@npmcli\run-script\lib\run-script.js:9:12)
+19 verbose stack     at D:\Node\node_modules\npm\node_modules\@npmcli\arborist\lib\arborist\rebuild.js:327:17
+19 verbose stack     at run (D:\Node\node_modules\npm\node_modules\promise-call-limit\dist\commonjs\index.js:67:22)
+19 verbose stack     at D:\Node\node_modules\npm\node_modules\promise-call-limit\dist\commonjs\index.js:84:9
+19 verbose stack     at new Promise (<anonymous>)
+19 verbose stack     at callLimit (D:\Node\node_modules\npm\node_modules\promise-call-limit\dist\commonjs\index.js:35:69)
+20 verbose pkgid tree-sitter-dart@1.0.0
+21 error code 1
+22 error path E:\project\SSP\ssp_backend\%USERPROFILE%\npm-cache\_cacache\tmp\git-cloneLLTlKS
+23 error command failed
+24 error command C:\WINDOWS\system32\cmd.exe /d /s /c node-gyp-build
+25 error 'node-gyp-build' �����ڲ����ⲿ���Ҳ���ǿ����еĳ���
+25 error ���������ļ���
+26 silly unfinished npm timer reify 1775182215304
+27 silly unfinished npm timer reify:build 1775182215351
+28 silly unfinished npm timer build 1775182215351
+29 silly unfinished npm timer build:links 1775182215352
+30 silly unfinished npm timer build:run:install 1775182215352
+31 silly unfinished npm timer build:run:install:E:/project/SSP/ssp_backend/%USERPROFILE%/npm-cache/_cacache/tmp/git-cloneLLTlKS 1775182215352
+32 verbose cwd E:\project\SSP\ssp_backend\%USERPROFILE%\npm-cache\_cacache\tmp\git-cloneLLTlKS
+33 verbose os Windows_NT 10.0.26200
+34 verbose node v24.14.0
+35 verbose npm  v11.9.0
+36 verbose exit 1
+37 verbose code 1
+38 error A complete log of this run can be found in: E:\project\SSP\ssp_backend\%USERPROFILE%\npm-cache\_logs\2026-04-03T02_10_14_498Z-debug-0.log

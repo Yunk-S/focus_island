@@ -1,6 +1,8 @@
 # Focus Island
 
 > **v2.0** · Focus Detection · Face Recognition · Pomodoro · WebRTC Collaboration
+>
+> 🌐 [中文](./README.md) | 📖 Current: English
 
 **Focus Island** is a desktop focus application based on facial vision analysis. By real-time detection of eye opening and closing ratio (EAR), head posture, and facial feature vectors, we provide users with verifiable records of focus duration.
 

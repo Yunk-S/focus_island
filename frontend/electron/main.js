@@ -1,7 +1,48 @@
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const net = require('net');
 const { spawn } = require('child_process');
+
+/** Ports passed to renderer (IPC) and to Python; defaults until allocateBackendPorts runs. */
+let backendPorts = { wsPort: 8765, apiPort: 8000 };
+
+function readPortsFromRoot(backendDir) {
+  try {
+    const p = path.join(backendDir, '.focus_island_ports.json');
+    if (fs.existsSync(p)) {
+      const j = JSON.parse(fs.readFileSync(p, 'utf8'));
+      return {
+        wsPort: Number(j.ws_port) || 8765,
+        apiPort: Number(j.api_port) || 8000,
+      };
+    }
+  } catch (_) {
+    /* ignore */
+  }
+  return null;
+}
+
+function checkPortFree(port, host = '127.0.0.1') {
+  return new Promise((resolve) => {
+    const srv = net.createServer();
+    srv.once('error', () => resolve(false));
+    srv.listen({ port, host }, () => {
+      srv.close(() => resolve(true));
+    });
+  });
+}
+
+async function allocateBackendPorts(baseWs = 8765, baseApi = 8000, host = '127.0.0.1', maxTries = 64) {
+  for (let i = 0; i < maxTries; i++) {
+    const ws = baseWs + i;
+    const api = baseApi + i;
+    if ((await checkPortFree(ws, host)) && (await checkPortFree(api, host))) {
+      return { wsPort: ws, apiPort: api };
+    }
+  }
+  return { wsPort: baseWs, apiPort: baseApi };
+}
 
 // Development mode check
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
@@ -75,13 +116,17 @@ function startBackend() {
       [
         '-m', 'focus_island.main',
         '--mode', 'server',
-        '--ws-port', '8765',
-        '--api-port', '8000',
+        '--ws-port', String(backendPorts.wsPort),
+        '--api-port', String(backendPorts.apiPort),
         '--cuda'
       ],
       {
         cwd: backendDir,
-        env: { ...process.env, PYTHONPATH: pyPath },
+        env: {
+          ...process.env,
+          PYTHONPATH: pyPath,
+          FOCUS_ISLAND_SKIP_AUTO_PORT: '1',
+        },
         stdio: ['pipe', 'pipe', 'pipe'],
         shell: false
       }
@@ -98,7 +143,8 @@ function startBackend() {
 
     backendProcess.stderr.on('data', (data) => {
       const output = data.toString();
-      console.error('[Backend Error]', output);
+      // Python/uvicorn 常把普通日志打到 stderr，避免一律标成 Error
+      console.warn('[Backend]', output.trimEnd());
       if (mainWindow) {
         mainWindow.webContents.send('backend-log', { type: 'stderr', data: output });
       }
@@ -139,9 +185,30 @@ function stopBackend() {
 }
 
 // App lifecycle
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  const backendDir = isDev
+    ? path.join(__dirname, '..', '..')
+    : path.join(app.getAppPath(), '..');
+
+  if (process.env.FOCUS_ISLAND_EXTERNAL_BACKEND === '1') {
+    const fromFile = readPortsFromRoot(backendDir);
+    backendPorts = fromFile || { wsPort: 8765, apiPort: 8000 };
+    console.log('[Main] Skipping embedded Python backend (FOCUS_ISLAND_EXTERNAL_BACKEND=1)');
+    console.log('[Main] Using WS/API ports for renderer:', backendPorts);
+  } else {
+    backendPorts = await allocateBackendPorts();
+    console.log('[Main] Allocated backend ports:', backendPorts);
+  }
+
   createWindow();
-  
+
+  if (process.env.FOCUS_ISLAND_EXTERNAL_BACKEND !== '1') {
+    const started = startBackend();
+    if (!started) {
+      console.error('[Main] Failed to start backend process');
+    }
+  }
+
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
@@ -180,6 +247,8 @@ ipcMain.handle('get-backend-status', async () => {
 ipcMain.handle('get-app-version', async () => {
   return app.getVersion();
 });
+
+ipcMain.handle('get-backend-ports', async () => ({ ...backendPorts }));
 
 // Export for testing
 module.exports = { startBackend, stopBackend };

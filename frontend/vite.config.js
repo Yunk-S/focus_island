@@ -1,6 +1,23 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
+import fs from 'fs';
+
+function readBackendWsPort() {
+  try {
+    const p = path.resolve(__dirname, '..', '.focus_island_ports.json');
+    if (fs.existsSync(p)) {
+      const j = JSON.parse(fs.readFileSync(p, 'utf8'));
+      const n = Number(j.ws_port);
+      if (Number.isFinite(n) && n > 0) return n;
+    }
+  } catch {
+    /* ignore */
+  }
+  return 8765;
+}
+
+const focusIslandWsPort = readBackendWsPort();
 
 export default defineConfig({
   plugins: [react()],
@@ -22,5 +39,8 @@ export default defineConfig({
     alias: {
       '@': path.resolve(__dirname, 'src')
     }
-  }
+  },
+  define: {
+    __FOCUS_ISLAND_WS_PORT__: JSON.stringify(focusIslandWsPort),
+  },
 });

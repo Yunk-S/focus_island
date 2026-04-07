@@ -8,8 +8,13 @@ Author: SSP Team
 
 import argparse
 import asyncio
+import json
 import logging
+import os
+import socket
 import sys
+from contextlib import asynccontextmanager
+from pathlib import Path
 import cv2
 import time
 import threading
@@ -17,9 +22,62 @@ import numpy as np
 
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    stream=sys.stdout,
+    force=True,
 )
 logger = logging.getLogger(__name__)
+
+_PORTS_FILE = ".focus_island_ports.json"
+
+
+def _tcp_port_available(host: str, port: int) -> bool:
+    """Return True if nothing is listening on host:port (best-effort; TOCTOU possible)."""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.bind((host, port))
+    except OSError:
+        return False
+    return True
+
+
+def resolve_listen_port_pair(
+    host: str, ws_port: int, api_port: int, max_offset: int = 64
+) -> tuple[int, int]:
+    """If default WS/API ports are busy, use the same offset for both so tooling stays paired."""
+    for off in range(max_offset):
+        w, a = ws_port + off, api_port + off
+        if _tcp_port_available(host, w) and _tcp_port_available(host, a):
+            return w, a
+    return ws_port, api_port
+
+
+def write_ports_file(ws_port: int, api_port: int, directory: Path | None = None) -> None:
+    """Write chosen ports for Vite / other tools (repo root cwd in normal use)."""
+    root = directory or Path.cwd()
+    path = root / _PORTS_FILE
+    try:
+        path.write_text(
+            json.dumps({"ws_port": ws_port, "api_port": api_port}, indent=2),
+            encoding="utf-8",
+        )
+    except OSError as e:
+        logger.debug("Could not write %s: %s", path, e)
+
+
+def _ws_json(obj: dict) -> str:
+    """websockets 12+ requires str/bytes for send(), not dict."""
+    return json.dumps(obj, ensure_ascii=False, default=str)
+
+
+def _open_video_capture(camera_id: int) -> cv2.VideoCapture:
+    """Open camera. On Windows, prefer DirectShow to reduce MSMF grab failures."""
+    if sys.platform == "win32":
+        cap = cv2.VideoCapture(camera_id, cv2.CAP_DSHOW)
+        if cap.isOpened():
+            return cap
+        cap.release()
+    return cv2.VideoCapture(camera_id)
 
 
 class ServerMode:
@@ -42,9 +100,10 @@ class ServerMode:
         # 工作流
         self.workflow = None
         
-        # 摄像头
+        # 摄像头（默认关闭，前端进入专注模式后再 start_camera）
         self.camera = None
-        self.is_running = False
+        self.capture_running = False
+        self.shutdown_requested = False
         
         # MJPEG 流
         self.latest_frame = None
@@ -78,22 +137,9 @@ class ServerMode:
             # 初始化
             system_info = self.workflow.initialize()
             logger.info(f"System initialized | GPU: {system_info.gpu_available}")
-            
-            # 打开摄像头
-            self.camera = cv2.VideoCapture(self.camera_id)
-            if not self.camera.isOpened():
-                logger.error(f"Cannot open camera {self.camera_id}")
-                return False
-            
-            self.camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-            self.camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-            
-            logger.info(f"Camera opened (ID: {self.camera_id})")
-            
-            # 启动视频捕获线程
-            self.is_running = True
-            self.capture_thread = threading.Thread(target=self._capture_loop, daemon=True)
-            self.capture_thread.start()
+            logger.info(
+                "Camera idle until a focus mode starts (frontend will send start_camera)."
+            )
             
             return True
             
@@ -104,15 +150,23 @@ class ServerMode:
     def _capture_loop(self):
         """视频捕获循环"""
         logger.info("Capture thread started")
-        
-        while self.is_running:
+        fail_streak = 0
+        last_fail_log = 0.0
+
+        while self.capture_running:
             if self.camera is None:
                 break
-            
+
             ret, frame = self.camera.read()
             if not ret:
-                logger.warning("Failed to read frame")
+                fail_streak += 1
+                now = time.time()
+                if now - last_fail_log >= 1.0:
+                    logger.warning("Failed to read frame (camera busy, unplugged, or driver issue)")
+                    last_fail_log = now
+                time.sleep(min(0.05 * fail_streak, 0.5))
                 continue
+            fail_streak = 0
             
             # 镜像翻转
             frame = cv2.flip(frame, 1)
@@ -162,9 +216,41 @@ class ServerMode:
             from fastapi.middleware.cors import CORSMiddleware
             from fastapi.responses import StreamingResponse
             import websockets
-            
+
+            skip_auto = os.environ.get("FOCUS_ISLAND_SKIP_AUTO_PORT", "").strip() == "1"
+            if not skip_auto:
+                w, a = resolve_listen_port_pair(self.host, self.ws_port, self.api_port)
+                if (w, a) != (self.ws_port, self.api_port):
+                    logger.warning(
+                        "Ports %s/%s were busy; using %s/%s. "
+                        "Close other Focus Island backends or set FOCUS_ISLAND_EXTERNAL_BACKEND=1 "
+                        "when using Electron together with start.bat.",
+                        self.ws_port,
+                        self.api_port,
+                        w,
+                        a,
+                    )
+                self.ws_port, self.api_port = w, a
+            write_ports_file(self.ws_port, self.api_port)
+
+            @asynccontextmanager
+            async def lifespan(app: FastAPI):
+                yield
+                logger.info("Stopping background capture...")
+                self.shutdown_requested = True
+                self.capture_running = False
+                ct = getattr(self, "capture_thread", None)
+                if ct is not None and ct.is_alive():
+                    ct.join(timeout=3.0)
+                if self.camera is not None:
+                    try:
+                        self.camera.release()
+                    except Exception:
+                        pass
+                    self.camera = None
+
             # 创建 FastAPI 应用
-            app = FastAPI(title="Focus Island Backend")
+            app = FastAPI(title="Focus Island Backend", lifespan=lifespan)
             
             # CORS
             app.add_middleware(
@@ -198,7 +284,7 @@ class ServerMode:
             @app.get("/api/video/stream")
             async def video_stream():
                 async def generate():
-                    while self.is_running:
+                    while not self.shutdown_requested:
                         frame = self.get_latest_frame()
                         if frame is not None:
                             ret, jpeg = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
@@ -315,12 +401,12 @@ class ServerMode:
             async def start_camera():
                 """开启摄像头"""
                 if self.camera is None or not self.camera.isOpened():
-                    self.camera = cv2.VideoCapture(self.camera_id)
+                    self.camera = _open_video_capture(self.camera_id)
                     if not self.camera.isOpened():
                         return {"success": False, "error": "Failed to open camera"}
                     self.camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
                     self.camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-                    self.is_running = True
+                    self.capture_running = True
                     
                     # 重启捕获线程
                     if not hasattr(self, 'capture_thread') or not self.capture_thread.is_alive():
@@ -328,12 +414,19 @@ class ServerMode:
                         self.capture_thread.start()
                     
                     return {"success": True, "camera_on": True}
+                self.capture_running = True
+                if not hasattr(self, 'capture_thread') or not self.capture_thread.is_alive():
+                    self.capture_thread = threading.Thread(target=self._capture_loop, daemon=True)
+                    self.capture_thread.start()
                 return {"success": True, "camera_on": True, "message": "Camera already on"}
             
             @app.post("/api/camera/stop")
             async def stop_camera():
                 """关闭摄像头"""
-                self.is_running = False
+                self.capture_running = False
+                ct = getattr(self, "capture_thread", None)
+                if ct is not None and ct.is_alive():
+                    ct.join(timeout=2.0)
                 if self.camera is not None:
                     self.camera.release()
                     self.camera = None
@@ -374,26 +467,37 @@ class ServerMode:
             # WebSocket 处理
             connected_clients = set()
             
-            async def ws_handler(websocket, path):
+            async def ws_handler(websocket, path=None):
                 client_id = f"client_{id(websocket)}"
                 connected_clients.add(websocket)
                 logger.info(f"WebSocket client connected: {client_id}")
                 
                 try:
                     # 发送欢迎消息
-                    await websocket.send({
+                    await websocket.send(_ws_json({
                         "type": "system_info",
                         "data": {
                             "client_id": client_id,
                             "server_time": time.time(),
                             "connected_clients": len(connected_clients)
                         }
-                    })
+                    }))
                     
                     # 消息循环
                     async for message in websocket:
                         try:
-                            data = message if isinstance(message, dict) else {}
+                            if isinstance(message, (bytes, bytearray)):
+                                message = message.decode("utf-8")
+                            if isinstance(message, str):
+                                try:
+                                    data = json.loads(message)
+                                except json.JSONDecodeError:
+                                    logger.warning("WS ignored non-JSON message")
+                                    continue
+                            elif isinstance(message, dict):
+                                data = message
+                            else:
+                                data = {}
                             msg_type = data.get("type", "")
                             
                             if msg_type == "verify_face":
@@ -406,10 +510,10 @@ class ServerMode:
                                         user_id=user_id,
                                         language=language
                                     )
-                                    await websocket.send({
+                                    await websocket.send(_ws_json({
                                         "type": "face_verified",
                                         "data": result
-                                    })
+                                    }))
                             
                             elif msg_type == "bind_face":
                                 user_id = data.get("data", {}).get("user_id", "default_user")
@@ -421,22 +525,22 @@ class ServerMode:
                                         user_id=user_id,
                                         language=language
                                     )
-                                    await websocket.send({
+                                    await websocket.send(_ws_json({
                                         "type": "face_bound",
                                         "data": result
-                                    })
+                                    }))
                             
                             elif msg_type == "check_face_status":
                                 user_id = data.get("data", {}).get("user_id", "default_user")
                                 if self.workflow:
                                     is_bound = self.workflow.authenticator.has_bound_face(user_id)
-                                    await websocket.send({
+                                    await websocket.send(_ws_json({
                                         "type": "face_status",
                                         "data": {
                                             "is_bound": is_bound,
                                             "user_id": user_id
                                         }
-                                    })
+                                    }))
                             
                             elif msg_type == "start_session":
                                 user_id = data.get("data", {}).get("user_id", "default_user")
@@ -452,83 +556,90 @@ class ServerMode:
                                     )
                                     if result.get("success"):
                                         self.session_active = True
-                                    await websocket.send({
+                                    await websocket.send(_ws_json({
                                         "type": "session_started",
                                         "data": result
-                                    })
+                                    }))
                             
                             elif msg_type == "stop_session":
                                 if self.workflow:
                                     summary = self.workflow.end_session()
                                     self.session_active = False
-                                    await websocket.send({
+                                    await websocket.send(_ws_json({
                                         "type": "session_ended",
                                         "data": summary
-                                    })
+                                    }))
                             
                             elif msg_type == "pause_session":
                                 # 暂停逻辑
-                                await websocket.send({"type": "paused"})
+                                await websocket.send(_ws_json({"type": "paused"}))
                             
                             elif msg_type == "resume_session":
                                 # 恢复逻辑
-                                await websocket.send({"type": "resumed"})
+                                await websocket.send(_ws_json({"type": "resumed"}))
                             
                             elif msg_type == "start_camera":
                                 if self.camera is None or not self.camera.isOpened():
-                                    self.camera = cv2.VideoCapture(self.camera_id)
+                                    self.camera = _open_video_capture(self.camera_id)
                                     if self.camera.isOpened():
                                         self.camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
                                         self.camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-                                        self.is_running = True
+                                        self.capture_running = True
                                         if not hasattr(self, 'capture_thread') or not self.capture_thread.is_alive():
                                             self.capture_thread = threading.Thread(target=self._capture_loop, daemon=True)
                                             self.capture_thread.start()
-                                        await websocket.send({
+                                        await websocket.send(_ws_json({
                                             "type": "camera_status",
                                             "data": {"camera_on": True}
-                                        })
+                                        }))
                                     else:
-                                        await websocket.send({
+                                        await websocket.send(_ws_json({
                                             "type": "error",
                                             "data": {"message": "Failed to open camera"}
-                                        })
+                                        }))
                                 else:
-                                    await websocket.send({
+                                    self.capture_running = True
+                                    if not hasattr(self, 'capture_thread') or not self.capture_thread.is_alive():
+                                        self.capture_thread = threading.Thread(target=self._capture_loop, daemon=True)
+                                        self.capture_thread.start()
+                                    await websocket.send(_ws_json({
                                         "type": "camera_status",
                                         "data": {"camera_on": True}
-                                    })
+                                    }))
                             
                             elif msg_type == "stop_camera":
-                                self.is_running = False
+                                self.capture_running = False
+                                ct = getattr(self, "capture_thread", None)
+                                if ct is not None and ct.is_alive():
+                                    ct.join(timeout=2.0)
                                 if self.camera is not None:
                                     self.camera.release()
                                     self.camera = None
-                                await websocket.send({
+                                await websocket.send(_ws_json({
                                     "type": "camera_status",
                                     "data": {"camera_on": False}
-                                })
+                                }))
                             
                             elif msg_type == "get_camera_status":
                                 camera_on = self.camera is not None and self.camera.isOpened()
-                                await websocket.send({
+                                await websocket.send(_ws_json({
                                     "type": "camera_status",
                                     "data": {"camera_on": camera_on}
-                                })
+                                }))
                             
                             elif msg_type == "get_system_info":
                                 if self.workflow:
                                     info = self.workflow.model_manager.get_system_info()
-                                    await websocket.send({
+                                    await websocket.send(_ws_json({
                                         "type": "system_info",
                                         "data": info.to_dict()
-                                    })
+                                    }))
                             
                             elif msg_type == "ping":
-                                await websocket.send({
+                                await websocket.send(_ws_json({
                                     "type": "pong",
                                     "data": {"server_time": time.time()}
-                                })
+                                }))
                                 
                         except Exception as e:
                             logger.error(f"WS message error: {e}")
@@ -541,16 +652,16 @@ class ServerMode:
             
             # 广播帧结果
             async def broadcast_loop():
-                while self.is_running:
+                while not self.shutdown_requested:
                     if connected_clients and self.session_active and self.workflow:
                         frame = self.get_latest_frame()
                         if frame is not None:
                             result = self.workflow.process_frame(frame)
                             if result:
-                                msg = {
+                                msg = _ws_json({
                                     "type": "frame_result",
                                     "data": result
-                                }
+                                })
                                 await asyncio.gather(
                                     *[client.send(msg) for client in connected_clients],
                                     return_exceptions=True
@@ -562,8 +673,8 @@ class ServerMode:
             
             # 启动 WebSocket 服务器
             ws_server = websockets.serve(ws_handler, self.host, self.ws_port)
-            asyncio.ensure_future(ws_server)
-            asyncio.ensure_future(broadcast_loop())
+            asyncio.create_task(ws_server)
+            asyncio.create_task(broadcast_loop())
             
             # 启动 FastAPI
             config = uvicorn.Config(app, host=self.host, port=self.api_port, log_level="warning")
@@ -580,13 +691,19 @@ class ServerMode:
             logger.info("Install with: pip install fastapi uvicorn websockets")
             return False
         except Exception as e:
+            if isinstance(e, OSError) and getattr(e, "winerror", None) == 10048:
+                logger.error(
+                    "端口已被占用（常见为 8765 / 8000）。请关闭其它 FocusIsland-Backend 进程，"
+                    "并避免同时使用 start.bat 与 Electron（electron/main.js 也会启动一套后端）。"
+                )
             logger.exception(f"Server error: {e}")
             return False
     
     def cleanup(self):
         """清理资源"""
         logger.info("Cleaning up...")
-        self.is_running = False
+        self.shutdown_requested = True
+        self.capture_running = False
         
         if self.camera:
             self.camera.release()

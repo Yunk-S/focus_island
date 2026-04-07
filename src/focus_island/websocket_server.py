@@ -284,6 +284,7 @@ class WebSocketServer:
     async def broadcast(self, message: WSMessage) -> int:
         """广播消息给所有客户端"""
         sent_count = 0
+        dead_clients: list[str] = []
         for client_id, client in list(self._clients.items()):
             try:
                 await client.send(message)
@@ -291,7 +292,8 @@ class WebSocketServer:
             except Exception as e:
                 logger.error(f"Failed to broadcast to {client_id}: {e}")
                 dead_clients.append(client_id)
-        
+        for client_id in dead_clients:
+            self._clients.pop(client_id, None)
         return sent_count
     
     async def send_to(self, client_id: str, message: WSMessage) -> bool:

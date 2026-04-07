@@ -8,6 +8,7 @@ build/
 
 # Node (frontend)
 node_modules/
+frontend/%USERPROFILE%/npm-cache/
 
 # 模型缓存（首次自动下载，无需提交）
 models/
@@ -15,6 +16,9 @@ models/
 
 # 用户人脸数据
 user_faces/
+
+# Runtime: backend writes chosen WS/API ports for Vite / Electron external mode
+.focus_island_ports.json
 
 # IDE / AI 辅助工具
 .claude/

@@ -43,7 +43,9 @@ def main():
         
         logging.basicConfig(
             level=logging.INFO,
-            format='%(asctime)s - %(levelname)s - %(message)s'
+            format='%(asctime)s - %(levelname)s - %(message)s',
+            stream=sys.stdout,
+            force=True,
         )
         logger = logging.getLogger(__name__)
         
@@ -78,14 +80,16 @@ def main():
         
         logging.basicConfig(
             level=logging.INFO,
-            format='%(asctime)s - %(levelname)s - %(message)s'
+            format='%(asctime)s - %(levelname)s - %(message)s',
+            stream=sys.stdout,
+            force=True,
         )
         logger = logging.getLogger(__name__)
         
         server = ServerMode(
             host="127.0.0.1",
-            ws_port=8765,
-            api_port=8000,
+            ws_port=args.ws_port,
+            api_port=args.api_port,
             camera_id=args.camera,
             use_cuda=args.cuda
         )
@@ -104,8 +108,8 @@ def main():
         server_thread.start()
         
         logger.info("Backend server started in background")
-        logger.info("WebSocket: ws://127.0.0.1:8765")
-        logger.info("REST API: http://127.0.0.1:8000")
+        logger.info("WebSocket: ws://127.0.0.1:%s", args.ws_port)
+        logger.info("REST API: http://127.0.0.1:%s", args.api_port)
         logger.info("Press Ctrl+C to stop")
         
         try:

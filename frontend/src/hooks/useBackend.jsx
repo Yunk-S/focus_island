@@ -50,7 +50,7 @@ export function BackendProvider({ children }) {
   });
 
   // Connect to WebSocket
-  const connect = useCallback(() => {
+  const connect = useCallback(async () => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       return;
     }
@@ -58,8 +58,22 @@ export function BackendProvider({ children }) {
     setConnectionState(WS_STATE.CONNECTING);
     setError(null);
 
+    let wsPort = 8765;
     try {
-      const ws = new WebSocket('ws://localhost:8765');
+      if (window.electronAPI?.getBackendPorts) {
+        const p = await window.electronAPI.getBackendPorts();
+        if (p?.wsPort != null) wsPort = Number(p.wsPort) || 8765;
+      } else if (typeof __FOCUS_ISLAND_WS_PORT__ !== 'undefined') {
+        wsPort = Number(__FOCUS_ISLAND_WS_PORT__) || 8765;
+      } else if (import.meta.env.VITE_BACKEND_WS_PORT) {
+        wsPort = Number(import.meta.env.VITE_BACKEND_WS_PORT) || 8765;
+      }
+    } catch {
+      /* keep default */
+    }
+
+    try {
+      const ws = new WebSocket(`ws://127.0.0.1:${wsPort}`);
       wsRef.current = ws;
 
       ws.onopen = () => {
@@ -266,9 +280,8 @@ export function BackendProvider({ children }) {
 
   // Auto-connect on mount
   useEffect(() => {
-    // Try to connect after a short delay
     const timer = setTimeout(() => {
-      connect();
+      void connect();
     }, 1000);
 
     return () => {

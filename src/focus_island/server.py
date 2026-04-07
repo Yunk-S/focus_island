@@ -670,21 +670,29 @@ class ServerMode:
             
             # 启动服务器
             import uvicorn
-            
-            # 启动 WebSocket 服务器
-            ws_server = websockets.serve(ws_handler, self.host, self.ws_port)
-            asyncio.create_task(ws_server)
-            asyncio.create_task(broadcast_loop())
-            
-            # 启动 FastAPI
-            config = uvicorn.Config(app, host=self.host, port=self.api_port, log_level="warning")
-            server = uvicorn.Server(config)
-            
-            logger.info(f"WebSocket server: ws://{self.host}:{self.ws_port}")
-            logger.info(f"REST API server: http://{self.host}:{self.api_port}")
-            logger.info(f"MJPEG stream: http://{self.host}:{self.api_port}/api/video/stream")
-            
-            await server.serve()
+
+            # websockets 12+：serve() 返回异步上下文管理器，需 async with，不能 create_task
+            broadcast_task = asyncio.create_task(broadcast_loop())
+            try:
+                async with websockets.serve(ws_handler, self.host, self.ws_port):
+                    config = uvicorn.Config(
+                        app, host=self.host, port=self.api_port, log_level="warning"
+                    )
+                    server = uvicorn.Server(config)
+
+                    logger.info(f"WebSocket server: ws://{self.host}:{self.ws_port}")
+                    logger.info(f"REST API server: http://{self.host}:{self.api_port}")
+                    logger.info(
+                        f"MJPEG stream: http://{self.host}:{self.api_port}/api/video/stream"
+                    )
+
+                    await server.serve()
+            finally:
+                broadcast_task.cancel()
+                try:
+                    await broadcast_task
+                except asyncio.CancelledError:
+                    pass
             
         except ImportError as e:
             logger.error(f"Missing dependency: {e}")

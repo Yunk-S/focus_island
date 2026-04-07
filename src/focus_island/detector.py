@@ -10,15 +10,17 @@ from __future__ import annotations
 
 import time
 import logging
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 import cv2
 import numpy as np
 
-from uniface.detection import RetinaFace, SCRFD
-from uniface.headpose import HeadPose, HeadPoseResult
-from uniface.landmark import Landmark106
+if TYPE_CHECKING:
+    from uniface.detection import RetinaFace, SCRFD
+    from uniface.headpose import HeadPose, HeadPoseResult
+    from uniface.landmark import Landmark106
 
+from .onnx_util import resolve_onnx_providers
 from .types import HeadPoseData, PipelineConfig, SystemInfo
 
 
@@ -45,20 +47,25 @@ class CoreDetector:
         self.config = config
         self.use_cuda = use_cuda
         self.detector_type = detector_type
+        self.providers = resolve_onnx_providers(use_cuda)
         
-        # ONNX Runtime 执行提供者
-        if use_cuda:
-            self.providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
-        else:
-            self.providers = ["CPUExecutionProvider"]
-        
+        # 模型实例（运行时由 _init_models 动态赋值）
+        self.detector = None
+        self.head_pose_estimator = None
+        self.landmark_detector = None
+
         # 初始化模型
         self._init_models()
         
         logger.info(f"CoreDetector initialized with {detector_type}, CUDA={use_cuda}")
     
     def _init_models(self) -> None:
-        """初始化所有模型"""
+        """初始化所有模型（延迟导入 uniface）"""
+        # 真正的 uniface 导入在这里执行
+        from uniface.detection import RetinaFace, SCRFD  # noqa: F811
+        from uniface.headpose import HeadPose  # noqa: F811
+        from uniface.landmark import Landmark106  # noqa: F811
+
         # 1. 人脸检测器
         logger.info("Loading face detector...")
         if self.detector_type == "scrfd":
@@ -183,13 +190,14 @@ class CoreDetector:
 
 class FaceDetectorLite:
     """轻量级人脸检测器 - 仅用于快速检测人脸是否存在"""
-    
+
     def __init__(self, use_cuda: bool = True):
         """初始化轻量级检测器"""
         self.use_cuda = use_cuda
-        self.providers = ["CUDAExecutionProvider", "CPUExecutionProvider"] if use_cuda else ["CPUExecutionProvider"]
-        
-        # 使用 RetinaFace (快速)
+        self.providers = resolve_onnx_providers(use_cuda)
+
+        # 使用 RetinaFace (快速) — 延迟导入
+        from uniface.detection import RetinaFace  # noqa: F811
         self.detector = RetinaFace(providers=self.providers)
     
     def detect(self, image: np.ndarray) -> Optional[dict]:

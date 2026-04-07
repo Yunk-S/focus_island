@@ -45,13 +45,13 @@ if not exist "frontend\node_modules" (
 echo [3/3] Starting backend, room server, frontend...
 echo.
 
-REM Launch separate .cmd files so we never nest broken quotes around paths.
+REM Launch separate .cmd files from script/ folder
 set "_ROOT=%~dp0"
-start "FocusIsland-Backend" cmd.exe /k call "%_ROOT%backend_server.cmd"
+start "FocusIsland-Backend" cmd.exe /k call "%_ROOT%script\backend_server.cmd"
 timeout /t 2 /nobreak >nul
-start "FocusIsland-Room" cmd.exe /k call "%_ROOT%room_server.cmd"
+start "FocusIsland-Room" cmd.exe /k call "%_ROOT%script\room_server.cmd"
 timeout /t 2 /nobreak >nul
-start "FocusIsland-Frontend" cmd.exe /k call "%_ROOT%frontend_dev.cmd"
+start "FocusIsland-Frontend" cmd.exe /k call "%_ROOT%script\frontend_dev.cmd"
 
 echo Opened 3 windows: Backend, Room, Frontend.
 echo Backend WS ws://127.0.0.1:8765  API http://127.0.0.1:8000

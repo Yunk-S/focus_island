@@ -24,16 +24,18 @@ os.environ["UNIFACE_CACHE_DIR"] = MODEL_DIR
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import Optional, Literal
+from typing import TYPE_CHECKING, Optional, Literal
 
 import numpy as np
 
-from uniface.detection import RetinaFace, SCRFD
-from uniface.recognition import ArcFace, MobileFace
-from uniface.landmark import Landmark106
-from uniface.headpose import HeadPose
-from uniface.types import HeadPoseResult
+if TYPE_CHECKING:
+    from uniface.detection import RetinaFace, SCRFD
+    from uniface.recognition import ArcFace, MobileFace
+    from uniface.landmark import Landmark106
+    from uniface.headpose import HeadPose
+    from uniface.types import HeadPoseResult
 
+from .onnx_util import resolve_onnx_providers
 from .types import SystemInfo
 
 
@@ -87,19 +89,16 @@ class ModelManager:
         self.recognition_model = recognition_model
         self.headpose_model = headpose_model
         
-        # ONNX Runtime 执行提供者
-        if use_cuda:
-            self.providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
-            logger.info("Using CUDA (GPU) for inference")
-        else:
-            self.providers = ["CPUExecutionProvider"]
-            logger.info("Using CPU for inference")
+        self.providers = resolve_onnx_providers(use_cuda)
+        if use_cuda and self.providers == ["CPUExecutionProvider"]:
+            logger.info("CUDA requested but not available; ONNX using CPU only")
+        logger.info("ONNX execution providers: %s", self.providers)
         
-        # 模型实例
-        self.detector: Optional[RetinaFace | SCRFD] = None
-        self.recognizer: Optional[ArcFace | MobileFace] = None
-        self.landmark_detector: Optional[Landmark106] = None
-        self.headpose_estimator: Optional[HeadPose] = None
+        # 模型实例 (类型仅作提示，由 load_all_models 动态赋值)
+        self.detector = None
+        self.recognizer = None
+        self.landmark_detector = None
+        self.headpose_estimator = None
         
         # 模型统计
         self.detector_stats = ModelStats(model_name="detector")
@@ -113,11 +112,18 @@ class ModelManager:
         self._total_load_time_ms: float = 0
     
     def load_all_models(self) -> None:
-        """加载所有模型"""
+        """加载所有模型（延迟导入 uniface 以规避 scipy DLL 崩溃）"""
         if self._models_loaded:
             logger.warning("Models already loaded")
             return
-        
+
+        # ── 真正的 uniface 导入在这里执行 ───────────────────────────────
+        from uniface.detection import RetinaFace, SCRFD  # noqa: F811
+        from uniface.recognition import ArcFace, MobileFace  # noqa: F811
+        from uniface.landmark import Landmark106  # noqa: F811
+        from uniface.headpose import HeadPose  # noqa: F811
+        # ─────────────────────────────────────────────────────────────
+
         self._load_start_time = time.time()
         
         # 检查模型文件是否存在

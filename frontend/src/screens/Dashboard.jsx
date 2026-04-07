@@ -40,7 +40,15 @@ function Dashboard() {
   const navigate = useNavigate();
   const { t } = useI18n();
   const { user, logout } = useAuth();
-  const { sessionState, isConnected, startSession, stopSession, pauseSession, resumeSession } = useBackend();
+  const {
+    sessionState,
+    isConnected,
+    startSession,
+    stopSession,
+    pauseSession,
+    resumeSession,
+    sendMessage,
+  } = useBackend();
   
   // Local state
   const [isFocusing, setIsFocusing] = useState(false);
@@ -72,6 +80,15 @@ function Dashboard() {
       setTotalPoints(sessionState.total_points);
     }
   }, [sessionState.total_points]);
+
+  // Ambient / dashboard：进入页面后再打开后端摄像头（不在应用启动时占用设备）
+  useEffect(() => {
+    if (!isConnected) return undefined;
+    sendMessage({ type: 'start_camera' });
+    return () => {
+      sendMessage({ type: 'stop_camera' });
+    };
+  }, [isConnected, sendMessage]);
   
   // Initialize camera
   useEffect(() => {

@@ -1,7 +1,7 @@
 """
 示例代码
 
-展示如何使用 SSP Backend 的各种功能。
+展示如何使用 Focus Island 的各种功能。
 
 Author: SSP Team
 """
@@ -9,10 +9,10 @@ Author: SSP Team
 import cv2
 import numpy as np
 
-from ssp_backend.types import PipelineConfig
-from ssp_backend.pipeline import FocusPipeline
-from ssp_backend.detector import CoreDetector
-from ssp_backend.ear import EARCalculator, EYEIndexConfig, visualize_eye_points
+from focus_island.types import PipelineConfig
+from focus_island.pipeline import FocusPipeline
+from focus_island.detector import CoreDetector
+from focus_island.ear import EARCalculator, EYEIndexConfig, visualize_eye_points
 
 
 def example_basic_usage():

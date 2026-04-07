@@ -46,7 +46,14 @@ export function BackendProvider({ children }) {
     has_face: false,
     head_pose: { pitch: 0, yaw: 0, roll: 0 },
     eye_data: { ear_avg: 0 },
-    identity: { verified: false, similarity: 0 }
+    identity: { verified: false, similarity: 0 },
+    // 人脸状态
+    face_status: {
+      is_bound: false,      // 是否已绑定人脸
+      is_verified: false,   // 最后一次验证是否通过
+      last_similarity: 0,   // 最后一次相似度
+      last_check: null       // 上次检查时间
+    }
   });
 
   // Connect to WebSocket
@@ -139,13 +146,14 @@ export function BackendProvider({ children }) {
         if (data) {
           setFrameData(data);
           // Update session state from frame result
+          // Backend returns: data.session.state, data.session.stats.focus_time_min, data.session.stats.total_points
           if (data.session) {
             setSessionState(prev => ({
               ...prev,
               session_id: data.workflow?.session_id,
-              total_points: data.session.stats?.total_points || prev.total_points,
-              focus_time: data.session.stats?.total_focus_time || prev.focus_time,
-              current_state: data.session.stats?.current_state || prev.current_state
+              total_points: data.session.stats?.total_points ?? prev.total_points,
+              focus_time: data.session.stats?.focus_time_min ?? prev.focus_time,
+              current_state: data.session.state || prev.current_state
             }));
           }
           if (data.perception) {
@@ -184,6 +192,47 @@ export function BackendProvider({ children }) {
 
       case 'heartbeat':
         // Connection is alive
+        break;
+
+      case 'face_bound':
+        if (data) {
+          setSessionState(prev => ({
+            ...prev,
+            face_status: {
+              ...prev.face_status,
+              is_bound: data.is_bound ?? false,
+              last_check: Date.now()
+            }
+          }));
+        }
+        break;
+
+      case 'face_verified':
+        if (data) {
+          setSessionState(prev => ({
+            ...prev,
+            face_status: {
+              ...prev.face_status,
+              is_verified: data.is_verified ?? false,
+              is_bound: data.is_bound ?? prev.face_status.is_bound,
+              last_similarity: data.similarity ?? 0,
+              last_check: Date.now()
+            }
+          }));
+        }
+        break;
+
+      case 'face_status':
+        if (data) {
+          setSessionState(prev => ({
+            ...prev,
+            face_status: {
+              ...prev.face_status,
+              is_bound: data.is_bound ?? false,
+              last_check: Date.now()
+            }
+          }));
+        }
         break;
 
       case 'error':
@@ -231,6 +280,30 @@ export function BackendProvider({ children }) {
   const resumeSession = useCallback(() => {
     return sendMessage({
       type: 'resume_session'
+    });
+  }, [sendMessage]);
+
+  // Bind face
+  const bindFace = useCallback((userId, language = 'zh') => {
+    return sendMessage({
+      type: 'bind_face',
+      data: { user_id: userId, language }
+    });
+  }, [sendMessage]);
+
+  // Verify face
+  const verifyFace = useCallback((userId, language = 'zh') => {
+    return sendMessage({
+      type: 'verify_face',
+      data: { user_id: userId, language }
+    });
+  }, [sendMessage]);
+
+  // Check face status
+  const checkFaceStatus = useCallback((userId) => {
+    return sendMessage({
+      type: 'check_face_status',
+      data: { user_id: userId }
     });
   }, [sendMessage]);
 
@@ -312,6 +385,9 @@ export function BackendProvider({ children }) {
     stopSession,
     pauseSession,
     resumeSession,
+    bindFace,
+    verifyFace,
+    checkFaceStatus,
     
     // Logs
     backendLogs,

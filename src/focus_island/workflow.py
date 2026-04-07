@@ -844,19 +844,35 @@ class FocusWorkFlow:
         
         perception.total_time_ms = (time.time() - frame_start) * 1000
         
-        # ========== 阶段三：状态裁决 ==========
-        
-        if self.session_manager:
-            session_result = self.session_manager.process_frame(
-                has_face=perception.has_face,
-                pitch=perception.pitch,
-                yaw=perception.yaw,
-                ear_avg=perception.ear_avg,
-                frame_id=self.workflow_state.processed_frames,
-                delta_time=delta_time
-            )
+            # ========== 阶段三：状态裁决 ==========
             
-            perception.identity_verified = session_result.get("is_valid", perception.has_face)
+            # 判断当前帧是否通过身份验证
+            # - 如果用户未绑定（start_focus 失败）→ 未验证
+            # - 如果用户已绑定且验证间隔内（刚绑定）→ 已验证
+            # - 如果用户已绑定且需要验证 → 检查最新验证结果
+            authenticator = self.authenticator
+            if authenticator.current_user is None:
+                is_verified = False
+            elif not authenticator.should_verify():
+                # 刚绑定或验证间隔内，无需重新验证，视为已验证
+                is_verified = True
+            else:
+                # 需要验证，使用最新验证结果
+                is_verified = getattr(perception, 'identity_verified', False)
+            
+            if self.session_manager:
+                session_result = self.session_manager.process_frame(
+                    has_face=perception.has_face,
+                    pitch=perception.pitch,
+                    yaw=perception.yaw,
+                    ear_avg=perception.ear_avg,
+                    frame_id=self.workflow_state.processed_frames,
+                    delta_time=delta_time,
+                    identity_verified=is_verified
+                )
+                
+                # 同步 perception.identity_verified 与实际验证结果
+                perception.identity_verified = is_verified
         
         # ========== 阶段四：积分结算 ==========
         # 积分已在 session_manager 中自动计算

@@ -236,7 +236,8 @@ class FocusFSM:
         pitch: float,
         yaw: float,
         ear_avg: float,
-        delta_time: float = 0.1
+        delta_time: float = 0.1,
+        identity_verified: bool = True
     ) -> tuple[FocusState, WarningReason, bool]:
         """
         处理单帧
@@ -253,6 +254,7 @@ class FocusFSM:
             yaw: 偏航角
             ear_avg: 平均 EAR 值
             delta_time: 帧间隔 (秒)
+            identity_verified: 身份是否通过验证（False 时强制留在 WARNING/IDLE）
             
         Returns:
             (current_state, warning_reason, focus_valid)
@@ -263,7 +265,19 @@ class FocusFSM:
         # 检查规则
         rule_result = self.rule_checker.check_all(has_face, pitch, yaw, ear_avg)
         
-        # 状态转换逻辑
+        # 身份未验证时，强制留在非专注状态
+        if not identity_verified:
+            if self._state == FocusState.FOCUSED:
+                self._transition(FocusState.WARNING, current_time)
+                self._grace_timer = self.grace_period
+                self._warning_start_time = current_time
+            elif self._state != FocusState.IDLE:
+                self._grace_timer -= delta_time
+                if self._grace_timer <= 0:
+                    self._transition(FocusState.INTERRUPTED, current_time)
+            return self._state, rule_result.warning_reason, False
+        
+        # 状态转换逻辑（原有逻辑）
         if self._state == FocusState.IDLE:
             # IDLE 状态
             if rule_result.overall_valid:
@@ -597,7 +611,8 @@ class SessionManager:
         yaw: float,
         ear_avg: float,
         frame_id: int = 0,
-        delta_time: float = 0.1
+        delta_time: float = 0.1,
+        identity_verified: bool = True
     ) -> dict:
         """
         处理单帧
@@ -609,15 +624,17 @@ class SessionManager:
             ear_avg: 平均 EAR 值
             frame_id: 帧 ID
             delta_time: 帧间隔
+            identity_verified: 身份是否通过验证
             
         Returns:
             处理结果
         """
         old_state = self.fsm.state
         
-        # 处理帧
+        # 处理帧（传递身份验证状态）
         new_state, warning_reason, is_valid = self.fsm.process_frame(
-            has_face, pitch, yaw, ear_avg, delta_time
+            has_face, pitch, yaw, ear_avg, delta_time,
+            identity_verified=identity_verified
         )
         
         # 状态变化
@@ -671,6 +688,7 @@ class SessionManager:
                 "focus_time_min": round(self.session_data.stats.total_focus_time / 60.0, 2),
                 "current_streak_min": round(self.scoring.current_streak_minutes, 2)
             },
+            "identity_verified": identity_verified,
             "fsm": {
                 "grace_remaining": round(self.fsm.grace_remaining, 2),
                 "interruption_count": self.fsm._interruption_count

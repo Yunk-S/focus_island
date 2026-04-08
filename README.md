@@ -2,7 +2,7 @@
 
 > **v2.0** · Focus Detection · Face Recognition · Pomodoro · WebRTC Collaboration
 >
-> 🌐 [中文](./README.md) | 📖 Current: English
+> 🌐 [中文](./README_CN.md.md) | 📖 Current: English
 
 **Focus Island** is a desktop focus application based on facial vision analysis. By real-time detection of eye opening and closing ratio (EAR), head posture, and facial feature vectors, we provide users with verifiable records of focus duration.
 
@@ -181,40 +181,46 @@ focus_island/                     ← Project root
 ├── src/focus_island/             ← Python backend
 │   ├── main.py                   ← Entry: camera/server/desktop
 │   ├── server.py                 ← FastAPI + WebSocket server
+│   ├── api_server.py             ← REST API server
+│   ├── websocket_server.py       ← WebSocket server
 │   ├── room_server.py            ← WebRTC signaling server
+│   ├── stream_controller.py      ← Camera stream controller
 │   ├── pipeline.py               ← Frame processing pipeline
 │   ├── auth.py                   ← Face binding & verification (ArcFace)
-│   ├── model_manager.py           ← UniFace model loading & inference
+│   ├── model_manager.py          ← UniFace model loading & inference
 │   ├── detector.py               ← RetinaFace / HeadPose wrapper
 │   ├── ear.py                    ← Eye Aspect Ratio calculation
 │   ├── focus_fsm.py              ← Focus FSM & scoring
-│   ├── workflow.py               ← 4-stage workflow orchestration
+│   ├── onnx_util.py              ← ONNX utilities
 │   └── types.py                  ← Pydantic data models
-├── frontend/                      ← Electron + React frontend
+├── frontend/                     ← Electron + React frontend
 │   ├── src/
-│   │   ├── App.tsx               ← Root component
-│   │   ├── main.tsx              ← React entry
-│   │   ├── components/            ← UI components
+│   │   ├── App.tsx              ← Root component
+│   │   ├── main.tsx             ← React entry
+│   │   ├── components/          ← UI components
 │   │   ├── hooks/
-│   │   │   ├── useBackend.tsx    ← WebSocket connection management
-│   │   │   └── useWebRTC.tsx     ← Collaboration room WebRTC
-│   │   └── pages/                ← Page-level components
+│   │   │   ├── useBackend.tsx   ← WebSocket connection management
+│   │   │   └── useWebRTC.tsx    ← Collaboration room WebRTC
+│   │   └── pages/               ← Page-level components
 │   ├── electron/
-│   │   ├── main.js               ← Electron main process
-│   │   └── preload.js            ← Preload script (secure IPC bridge)
+│   │   ├── main.js              ← Electron main process
+│   │   └── preload.js           ← Preload script (secure IPC bridge)
 │   └── package.json
-├── config/                       ← YAML config files
-├── models/                       ← ONNX model cache (auto-downloaded)
-├── user_faces/                   ← User face data (do not commit)
-├── requirements.txt              ← Python deps (includes uniface)
-├── setup.py                      ← pip install -e . entry
-├── start.bat                     ← Windows one-click start
-├── start.ps1                     ← PowerShell version
-├── setup_venv.bat                ← Initialize venv
-├── fix_venv.bat                  ← Fix broken venv
-├── README.md                     ← Chinese version
-├── README_EN.md                  ← English version
-└── LICENSE                      ← MIT License
+├── config/                      ← YAML config files
+├── examples/                    ← Example files
+├── models/                      ← ONNX model cache (auto-downloaded)
+├── script/                      ← Helper scripts
+├── tests/                       ← Test files
+├── user_faces/                  ← User face data (do not commit)
+├── requirements.txt             ← Python deps (includes uniface)
+├── setup.py                     ← pip install -e . entry
+├── start.bat                    ← Windows one-click start
+├── start.ps1                    ← PowerShell version
+├── setup_venv.bat               ← Initialize venv
+├── fix_venv.bat                 ← Fix broken venv
+├── README.md                    ← Chinese version
+├── README_CN.md                 ← English version (this file)
+└── LICENSE                     ← MIT License
 ```
 
 ---

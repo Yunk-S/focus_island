@@ -2,7 +2,7 @@
 
 > **v2.0** · 专注检测 · 人脸识别 · 番茄钟 · WebRTC 协作
 >
-> 🌐 [English](./README_EN.md) | 📖 当前：中文
+> 🌐 [English](./README.md) | 📖 当前：中文
 
 **Focus Island** 是一款基于人脸视觉分析的桌面专注应用。通过实时检测眼部开合度（EAR）、头部姿态和面部特征向量，为用户提供可验证的专注时长记录。
 
@@ -185,39 +185,46 @@ npm run electron:dev
 focus_island/                     ← 项目根目录 / Project root
 ├── src/focus_island/             ← Python 后端 / Python backend
 │   ├── main.py                   ← 程序入口（三模式）/ Entry: camera/server/desktop
-│   ├── server.py                 ← FastAPI + WebSocket 服务端
-│   ├── room_server.py            ← WebRTC 信令服务器
-│   ├── pipeline.py               ← 帧处理流水线 / Frame processing pipeline
-│   ├── auth.py                   ← 人脸绑定/验证（ArcFace）/ Face binding & verification
-│   ├── model_manager.py          ← UniFace 模型加载与推理 / Model loading & inference
-│   ├── detector.py               ← RetinaFace / HeadPose 封装
-│   ├── ear.py                    ← EAR 眼部开合度计算 / Eye Aspect Ratio
-│   ├── focus_fsm.py              ← 专注状态机与积分计算 / Focus FSM & scoring
-│   ├── workflow.py               ← 四阶段工作流编排 / 4-stage workflow orchestration
-│   └── types.py                  ← Pydantic 数据类型定义
-├── frontend/                      ← Electron + React 前端
+│   ├── server.py                ← FastAPI + WebSocket 服务端
+│   ├── api_server.py            ← REST API 服务端
+│   ├── websocket_server.py      ← WebSocket 服务端
+│   ├── room_server.py           ← WebRTC 信令服务器
+│   ├── stream_controller.py     ← 摄像头流控制器 / Camera stream controller
+│   ├── pipeline.py              ← 帧处理流水线 / Frame processing pipeline
+│   ├── auth.py                  ← 人脸绑定/验证（ArcFace）/ Face binding & verification
+│   ├── model_manager.py         ← UniFace 模型加载与推理 / Model loading & inference
+│   ├── detector.py             ← RetinaFace / HeadPose 封装
+│   ├── ear.py                   ← EAR 眼部开合度计算 / Eye Aspect Ratio
+│   ├── focus_fsm.py            ← 专注状态机与积��计算 / Focus FSM & scoring
+│   ├── onnx_util.py            ← ONNX 工具函数
+│   └── types.py                ← Pydantic 数据类型定义
+├── frontend/                    ← Electron + React 前端
 │   ├── src/
-│   │   ├── App.tsx               ← 根组件 / Root component
-│   │   ├── main.tsx              ← React 入口
-│   │   ├── components/            ← UI 组件 / UI components
+│   │   ├── App.tsx             ← 根组件 / Root component
+│   │   ├── main.tsx           ← React 入口
+│   │   ├── components/         ← UI 组件 / UI components
 │   │   ├── hooks/
-│   │   │   ├── useBackend.tsx    ← WebSocket 连接管理
-│   │   │   └── useWebRTC.tsx     ← 协作房间 WebRTC
-│   │   └── pages/                ← 页面级组件 / Page components
+│   │   │   ├── useBackend.tsx  ← WebSocket 连接管理
+│   │   │   └── useWebRTC.tsx   ← 协作房间 WebRTC
+│   │   └── pages/             ← 页面级组件 / Page components
 │   ├── electron/
-│   │   ├── main.js               ← Electron 主进程
-│   │   └── preload.js            ← 预加载脚本（安全 IPC 桥接）
+│   │   ├── main.js            ← Electron 主进程
+│   │   └── preload.js         ← 预加载脚本（安全 IPC 桥接）
 │   └── package.json
-├── config/                       ← YAML 配置文件
-├── models/                       ← ONNX 模型缓存（首次自动下载）
-├── user_faces/                   ← 用户人脸数据（勿提交）
-├── requirements.txt              ← Python 依赖（含 uniface）
-├── setup.py                      ← pip install -e . 入口
-├── start.bat                     ← Windows 一键启动
-├── start.ps1                     ← PowerShell 版
-├── setup_venv.bat                ← 初始化虚拟环境
-├── fix_venv.bat                  ← 修复损坏的 venv
-└── README.md
+├── config/                     ← YAML 配置文件
+├── examples/                   ← 示例文件
+├── models/                     ← ONNX 模型缓存（首次自动下载）
+├── script/                     ← 辅助脚本
+├── tests/                      ← 测试文件
+├── user_faces/                ← 用户人脸数据（勿提交）
+├── requirements.txt           ← Python 依赖（含 uniface）
+├── setup.py                   ← pip install -e . 入口
+├── start.bat                  ← Windows 一键启动
+├── start.ps1                  ← PowerShell 版
+├── setup_venv.bat            ← 初始化虚拟环境
+├── fix_venv.bat              ← 修复损坏的 venv
+├── README.md                  ← 英文版 / English version
+└── README_CN.md               ← 中文版（此文件）
 ```
 
 ---

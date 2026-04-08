@@ -42,6 +42,10 @@ async function allocateBackendPorts(baseWs = 8765, baseApi = 8000, host = '127.0
   for (let i = 0; i < maxTries; i++) {
     const ws = baseWs + i;
     const api = baseApi + i;
+    // Reserve 8766 for focus_island.room_server (Live / WebRTC signaling). Never use it for the main backend WS.
+    if (ws === DEFAULT_ROOM_WS_PORT) {
+      continue;
+    }
     if ((await checkPortFree(ws, host)) && (await checkPortFree(api, host))) {
       return { wsPort: ws, apiPort: api };
     }
@@ -294,6 +298,13 @@ app.whenReady().then(async () => {
     ? path.join(__dirname, '..', '..')
     : path.join(app.getAppPath(), '..');
 
+  // Bind room signaling (8766) before choosing backend ports so allocateBackendPorts()
+  // does not pick 8766 for the main Python websockets server (avoids WinError 10048 and
+  // frontend accidentally hitting FastAPI / on the room port → 403).
+  if (process.env.FOCUS_ISLAND_SKIP_ROOM_SERVER !== '1') {
+    await startRoomServerIfNeeded(backendDir);
+  }
+
   if (process.env.FOCUS_ISLAND_EXTERNAL_BACKEND === '1') {
     const fromFile = readPortsFromRoot(backendDir);
     backendPorts = fromFile || { wsPort: 8765, apiPort: 8000 };
@@ -302,11 +313,6 @@ app.whenReady().then(async () => {
   } else {
     backendPorts = await allocateBackendPorts();
     console.log('[Main] Allocated backend ports:', backendPorts);
-  }
-
-  // Room server is lightweight — start before the window so Live mode can connect immediately.
-  if (process.env.FOCUS_ISLAND_SKIP_ROOM_SERVER !== '1') {
-    await startRoomServerIfNeeded(backendDir);
   }
 
   createWindow();

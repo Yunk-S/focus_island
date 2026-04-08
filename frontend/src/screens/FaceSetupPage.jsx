@@ -235,12 +235,6 @@ function FaceSetupPage() {
             animate={{ opacity: 1, scale: 1 }}
             className="relative w-full max-w-sm mx-4 rounded-2xl border border-white/20 bg-white/10 p-8 shadow-2xl backdrop-blur-xl"
           >
-            <button
-              onClick={() => setCameraAgreed(false)}
-              className="absolute right-4 top-4 text-white/50 hover:text-white"
-            >
-              <X className="size-5" />
-            </button>
             <div className="flex size-14 mx-auto mb-5 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/80 to-pink-500/80">
               <Camera className="size-7 text-white" />
             </div>
@@ -258,7 +252,7 @@ function FaceSetupPage() {
                 {t('faceSetup.cameraModalAgree')}
               </button>
               <button
-                onClick={() => setCameraAgreed(false)}
+                onClick={() => navigate('/personal')}
                 className="w-full rounded-xl border border-white/20 py-3 text-center text-sm text-white/60 transition-colors hover:border-white/40 hover:text-white/80"
               >
                 {t('faceSetup.cameraModalDisagree')}

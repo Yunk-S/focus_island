@@ -33,14 +33,14 @@ function AppContent() {
     return () => clearTimeout(timer);
   }, []);
 
-  // 仅当路径为登录页或未认证时重定向，避免打断 /ambient、/live 等路由
+  // 仅当路径为登录页、注册页、找回密码页或未认证时重定向，避免打断 /ambient、/live 等路由
   useEffect(() => {
     if (initialLoading || authLoading) return;
 
     const path = location.pathname;
 
     if (!isAuthenticated) {
-      if (path !== '/login') {
+      if (path !== '/login' && path !== '/register' && path !== '/forgot-password') {
         navigate('/login', { replace: true });
       }
       return;

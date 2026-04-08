@@ -32,6 +32,7 @@ function FaceSetupPage() {
   const [lastJson, setLastJson] = useState(null);
   const [statusErr, setStatusErr] = useState(null);
   const [cameraAgreed, setCameraAgreed] = useState(false);
+  const [cameraSkipped, setCameraSkipped] = useState(false);
 
   const userId = user?.email || 'default_user';
 
@@ -228,7 +229,7 @@ function FaceSetupPage() {
         </div>
       </main>
 
-      {!cameraAgreed && (
+      {!cameraAgreed && !cameraSkipped && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
@@ -252,7 +253,7 @@ function FaceSetupPage() {
                 {t('faceSetup.cameraModalAgree')}
               </button>
               <button
-                onClick={() => navigate('/personal')}
+                onClick={() => setCameraSkipped(true)}
                 className="w-full rounded-xl border border-white/20 py-3 text-center text-sm text-white/60 transition-colors hover:border-white/40 hover:text-white/80"
               >
                 {t('faceSetup.cameraModalDisagree')}

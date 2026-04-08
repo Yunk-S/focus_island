@@ -39,6 +39,11 @@ function AppContent() {
 
     const path = location.pathname;
 
+    // 已认证用户访问认证页面时停留在当前页面
+    if (isAuthenticated && (path === '/register' || path === '/forgot-password')) {
+      return;
+    }
+
     if (!isAuthenticated) {
       if (path !== '/login' && path !== '/register' && path !== '/forgot-password') {
         navigate('/login', { replace: true });
@@ -46,8 +51,9 @@ function AppContent() {
       return;
     }
 
+    // 已认证用户从登录页重定向到个人页
     if (path === '/login') {
-      navigate('/face-setup', { replace: true });
+      navigate('/personal', { replace: true });
     }
   }, [initialLoading, authLoading, isAuthenticated, location.pathname, navigate]);
 

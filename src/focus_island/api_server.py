@@ -1,7 +1,7 @@
 """
-REST API 接口模块
+REST API Interface Module
 
-提供 HTTP REST API，用于会话管理、状态查询等。
+Provides HTTP REST API for session management and status queries.
 
 Author: SSP Team
 """
@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 # ============== API Models ==============
 
 class SessionState(str, Enum):
-    """会话状态枚举"""
+    """Session state enum"""
     IDLE = "idle"
     FOCUSED = "focused"
     WARNING = "warning"
@@ -47,20 +47,20 @@ class SessionState(str, Enum):
 
 
 class StartSessionRequest(BaseModel if FASTAPI_AVAILABLE else object):
-    """开始会话请求"""
+    """Start session request"""
     user_id: Optional[str] = None
     config: Optional[dict] = None
 
 
 class ProcessFrameRequest(BaseModel if FASTAPI_AVAILABLE else object):
-    """处理帧请求"""
-    image: str  # Base64 编码的图像
+    """Process frame request"""
+    image: str  # Base64 encoded image
     timestamp: Optional[float] = None
 
 
 @dataclass
 class FrameResult:
-    """帧处理结果"""
+    """Frame processing result"""
     session_id: str
     frame_id: int
     timestamp: float
@@ -74,7 +74,7 @@ class FrameResult:
 
 @dataclass
 class SessionSummary:
-    """会话摘要"""
+    """Session summary"""
     session_id: str
     user_id: Optional[str]
     start_time: str
@@ -87,7 +87,7 @@ class SessionSummary:
 
 @dataclass
 class SystemStatus:
-    """系统状态"""
+    """System status"""
     status: str
     uptime_seconds: float
     active_sessions: int
@@ -100,7 +100,7 @@ class SystemStatus:
 # ============== REST API Server ==============
 
 class RESTAPIServer:
-    """REST API 服务器"""
+    """REST API Server"""
     
     def __init__(
         self,
@@ -110,13 +110,13 @@ class RESTAPIServer:
         cors_origins: Optional[list[str]] = None
     ):
         """
-        初始化 REST API 服务器
+        Initialize REST API Server
         
         Args:
-            host: 监听地址
-            port: 监听端口
-            cors_enabled: 是否启用 CORS
-            cors_origins: CORS 允许的 origins
+            host: Listen address
+            port: Listen port
+            cors_enabled: Enable CORS
+            cors_origins: CORS allowed origins
         """
         if not FASTAPI_AVAILABLE:
             raise ImportError("FastAPI is required for REST API. Install with: pip install fastapi uvicorn")
@@ -126,31 +126,31 @@ class RESTAPIServer:
         self.cors_enabled = cors_enabled
         self.cors_origins = cors_origins or ["*"]
         
-        # 创建 FastAPI 应用
+        # Create FastAPI app
         self.app = FastAPI(
             title="SSP Backend API",
             description="Smart Study Spot Backend API",
             version="1.0.0"
         )
         
-        # 存储引用
+        # Store references
         self._session_manager = None
         self._pipeline = None
         self._system_info = None
         self._start_time = time.time()
         self._total_frames = 0
         
-        # 回调
+        # Callbacks
         self._handlers: dict[str, Callable] = {}
         
-        # 设置中间件和路由
+        # Setup middleware and routes
         self._setup_middleware()
         self._setup_routes()
         
         logger.info(f"RESTAPIServer initialized: {host}:{port}")
     
     def _setup_middleware(self) -> None:
-        """设置中间件"""
+        """Setup middleware"""
         if self.cors_enabled:
             self.app.add_middleware(
                 CORSMiddleware,
@@ -161,7 +161,7 @@ class RESTAPIServer:
             )
     
     def _setup_routes(self) -> None:
-        """设置路由"""
+        """Setup routes"""
         # 健康检查
         @self.app.get("/health", tags=["System"])
         async def health_check():
@@ -280,17 +280,17 @@ class RESTAPIServer:
             return self._system_info.to_dict()
     
     def set_pipeline(self, pipeline) -> None:
-        """设置流水线引用"""
+        """Set pipeline reference"""
         self._pipeline = pipeline
         if pipeline:
             self._session_manager = pipeline.session_manager
     
     def set_system_info(self, system_info) -> None:
-        """设置系统信息"""
+        """Set system info"""
         self._system_info = system_info
     
     def get_app(self):
-        """获取 FastAPI 应用"""
+        """Get FastAPI app"""
         return self.app
 
 
@@ -300,5 +300,5 @@ def create_api_server(
     cors_enabled: bool = True,
     cors_origins: Optional[list[str]] = None
 ) -> RESTAPIServer:
-    """创建 API 服务器"""
+    """Create API server"""
     return RESTAPIServer(host, port, cors_enabled, cors_origins)

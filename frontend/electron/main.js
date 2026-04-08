@@ -143,7 +143,7 @@ function startBackend() {
 
     backendProcess.stderr.on('data', (data) => {
       const output = data.toString();
-      // Python/uvicorn 常把普通日志打到 stderr，避免一律标成 Error
+      // Python/uvicorn often sends regular logs to stderr, avoid marking all as Error
       console.warn('[Backend]', output.trimEnd());
       if (mainWindow) {
         mainWindow.webContents.send('backend-log', { type: 'stderr', data: output });

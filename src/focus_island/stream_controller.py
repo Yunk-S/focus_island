@@ -1,7 +1,7 @@
 """
-视频流控制器模块
+Video Stream Controller Module
 
-实现抽帧处理和目标人脸锁定逻辑。
+Implements frame sampling and target face locking logic.
 
 Author: SSP Team
 """
@@ -23,42 +23,42 @@ logger = logging.getLogger(__name__)
 
 
 class FaceSelectionMode(Enum):
-    """人脸选择模式"""
-    LARGEST = "largest"              # 选择最大人脸
-    MOST_CENTERED = "most_centered"   # 选择最居中的人脸
-    COMBINED = "combined"           # 综合评分
+    """Face selection mode"""
+    LARGEST = "largest"              # Select largest face
+    MOST_CENTERED = "most_centered"   # Select most centered face
+    COMBINED = "combined"           # Combined score
 
 
 @dataclass
 class FaceCandidate:
-    """人脸候选"""
+    """Face candidate"""
     bbox: np.ndarray
     confidence: float
     area: float
-    center_offset: float  # 距离图像中心的偏移
-    combined_score: float  # 综合评分
+    center_offset: float  # Offset from image center
+    combined_score: float  # Combined score
     
     def __post_init__(self):
-        # 计算综合评分 (面积越大越好，偏移越小越好)
-        # 归一化处理
-        area_score = min(self.area / 100000, 1.0) * 0.5  # 面积权重 50%
-        center_score = max(0, 1 - self.center_offset / 500) * 0.5  # 居中权重 50%
+        # Calculate combined score (larger area is better, smaller offset is better)
+        # Normalized
+        area_score = min(self.area / 100000, 1.0) * 0.5  # Area weight 50%
+        center_score = max(0, 1 - self.center_offset / 500) * 0.5  # Center weight 50%
         self.combined_score = area_score + center_score
 
 
 @dataclass
 class FrameController:
-    """抽帧控制器
+    """Frame Sampling Controller
     
-    控制视频流的帧采样率，降低功耗。
-    建议每秒处理 3-5 帧，而非 30 FPS 全速运行。
+    Controls video stream frame sampling rate to reduce power consumption.
+    Recommended to process 3-5 frames per second, not full 30 FPS.
     """
     
-    # 帧率配置
-    target_fps: float = 4.0            # 目标处理帧率
-    min_frame_interval: float = 0.1   # 最小帧间隔 (秒)
+    # Frame rate config
+    target_fps: float = 4.0            # Target processing frame rate
+    min_frame_interval: float = 0.1   # Min frame interval (seconds)
     
-    # 状态
+    # State
     _last_process_time: float = 0.0
     _frame_counter: int = 0
     _total_frames: int = 0
@@ -68,10 +68,10 @@ class FrameController:
     
     def should_process_frame(self) -> bool:
         """
-        判断当前帧是否应该处理
+        Determine if current frame should be processed
         
         Returns:
-            True 如果应该处理此帧
+            True if should process this frame
         """
         current_time = time.time()
         elapsed = current_time - self._last_process_time
@@ -85,14 +85,14 @@ class FrameController:
         return False
     
     def force_process(self) -> bool:
-        """强制处理当前帧"""
+        """Force process current frame"""
         self._last_process_time = time.time()
         self._frame_counter += 1
         self._total_frames += 1
         return True
     
     def get_stats(self) -> dict:
-        """获取统计信息"""
+        """Get statistics"""
         elapsed_total = time.time() - self._last_process_time + (self._frame_counter * self.min_frame_interval)
         actual_fps = self._total_frames / max(elapsed_total, 1.0)
         
@@ -104,16 +104,16 @@ class FrameController:
         }
     
     def reset(self) -> None:
-        """重置状态"""
+        """Reset state"""
         self._last_process_time = 0.0
         self._frame_counter = 0
         self._total_frames = 0
 
 
 class FaceSelector:
-    """目标人脸选择器
+    """Target Face Selector
     
-    当画面中有多张人脸时，选择最合适的一张作为"当前座次用户"。
+    When multiple faces are in frame, select the most suitable one as "current seat user".
     """
     
     def __init__(
@@ -123,50 +123,50 @@ class FaceSelector:
         image_size: tuple[int, int] = (640, 480)
     ):
         """
-        初始化人脸选择器
+        Initialize face selector
         
         Args:
-            mode: 选择模式
-            image_center: 图像中心点坐标 (x, y)
-            image_size: 图像尺寸 (width, height)
+            mode: Selection mode
+            image_center: Image center coordinates (x, y)
+            image_size: Image size (width, height)
         """
         self.mode = mode
         self.image_center = image_center or (image_size[0] / 2, image_size[1] / 2)
         self.image_width = image_size[0]
         self.image_height = image_size[1]
         
-        # 当前锁定的人脸
+        # Currently locked face
         self._locked_face: Optional[FaceCandidate] = None
         self._lock_stable_frames = 0
-        self._unlock_frames_threshold = 5  # 连续5帧检测不到则解锁
+        self._unlock_frames_threshold = 5  # Unlock after 5 consecutive frames without detection
         
         logger.info(f"FaceSelector initialized: mode={mode.value}")
     
     def update_image_params(self, image_width: int, image_height: int) -> None:
-        """更新图像参数"""
+        """Update image params"""
         self.image_width = image_width
         self.image_height = image_height
         self.image_center = (image_width / 2, image_height / 2)
     
     def select_target_face(self, faces: list, frame_bbox: Optional[np.ndarray] = None) -> Optional[np.ndarray]:
         """
-        从多张人脸中选择目标人脸
+        Select target face from multiple faces
         
         Args:
-            faces: RetinaFace 检测到的所有 Face 对象
-            frame_bbox: 上一帧的目标人脸边界框 (用于追踪)
+            faces: All Face objects detected by RetinaFace
+            frame_bbox: Previous frame's target face bounding box (for tracking)
             
         Returns:
-            选中的人脸边界框，或 None
+            Selected face bounding box, or None
         """
         if not faces:
-            # 无脸检测
+            # No face detected
             if self._locked_face is not None:
                 self._lock_stable_frames = 0
             self._locked_face = None
             return None
         
-        # 构建筑选列表
+        # Build candidate list
         candidates = []
         for face in faces:
             bbox = face.bbox
@@ -183,7 +183,7 @@ class FaceSelector:
             )
             candidates.append(candidate)
         
-        # 根据模式选择
+        # Select based on mode
         if self.mode == FaceSelectionMode.LARGEST:
             best = max(candidates, key=lambda c: c.area)
         elif self.mode == FaceSelectionMode.MOST_CENTERED:
@@ -191,32 +191,32 @@ class FaceSelector:
         else:  # COMBINED
             best = max(candidates, key=lambda c: c.combined_score)
         
-        # 检查是否与锁定的人脸匹配
+        # Check if matches locked face
         if self._locked_face is not None:
             if self._is_same_face(best.bbox, self._locked_face.bbox):
                 self._lock_stable_frames += 1
             else:
                 self._lock_stable_frames = 0
         
-        # 更新锁定
+        # Update lock
         self._locked_face = best
         
         return best.bbox
     
     def _calculate_area(self, bbox: np.ndarray) -> float:
-        """计算人脸面积"""
+        """Calculate face area"""
         x1, y1, x2, y2 = bbox[:4]
         return float((x2 - x1) * (y2 - y1))
     
     def _calculate_center(self, bbox: np.ndarray) -> tuple[float, float]:
-        """计算人脸中心点"""
+        """Calculate face center point"""
         x1, y1, x2, y2 = bbox[:4]
         cx = (x1 + x2) / 2
         cy = (y1 + y2) / 2
         return cx, cy
     
     def _calculate_center_offset(self, face_center: tuple[float, float]) -> float:
-        """计算距离图像中心的偏移"""
+        """Calculate offset from image center"""
         fx, fy = face_center
         ix, iy = self.image_center
         return np.sqrt((fx - ix) ** 2 + (fy - iy) ** 2)
@@ -228,16 +228,16 @@ class FaceSelector:
         iou_threshold: float = 0.3
     ) -> bool:
         """
-        判断两个边界框是否代表同一张人脸
+        Determine if two bounding boxes represent the same face
         
         Args:
-            bbox1, bbox2: 两个边界框
-            iou_threshold: IoU 阈值
+            bbox1, bbox2: Two bounding boxes
+            iou_threshold: IoU threshold
             
         Returns:
-            True 如果是同一张人脸
+            True if same face
         """
-        # 计算 IoU
+        # Calculate IoU
         x1 = max(bbox1[0], bbox2[0])
         y1 = max(bbox1[1], bbox2[1])
         x2 = min(bbox1[2], bbox2[2])
@@ -254,42 +254,42 @@ class FaceSelector:
         
         iou = intersection / union
         
-        # 也检查中心点距离
+        # Also check center distance
         c1 = self._calculate_center(bbox1)
         c2 = self._calculate_center(bbox2)
         center_dist = np.sqrt((c1[0] - c2[0]) ** 2 + (c1[1] - c2[1]) ** 2)
         
-        # 阈值: IoU > 0.3 或 中心距离 < 50px
+        # Threshold: IoU > 0.3 or center distance < 50px
         return iou > iou_threshold or center_dist < 50
     
     def get_locked_face(self) -> Optional[np.ndarray]:
-        """获取当前锁定的人脸"""
+        """Get currently locked face"""
         if self._locked_face is not None:
             return self._locked_face.bbox
         return None
     
     def is_locked(self) -> bool:
-        """是否已锁定人脸"""
+        """Is face locked"""
         return self._locked_face is not None
     
     def reset(self) -> None:
-        """重置锁定"""
+        """Reset lock"""
         self._locked_face = None
         self._lock_stable_frames = 0
 
 
 @dataclass
 class AntiSpoofingCheck:
-    """防欺骗检测结果"""
+    """Anti-spoofing check result"""
     is_real: bool = True
     confidence: float = 1.0
     warning: Optional[str] = None
 
 
 class AntiSpoofingMonitor:
-    """防作弊监控器
+    """Anti-cheating Monitor
     
-    监控人脸稳定性和身份一致性。
+    Monitors face stability and identity consistency.
     """
     
     def __init__(
@@ -298,59 +298,59 @@ class AntiSpoofingMonitor:
         tracking_required_frames: int = 3
     ):
         """
-        初始化防作弊监控器
+        Initialize anti-cheating monitor
         
         Args:
-            face_stability_threshold: 人脸稳定性阈值 (0-1)
-            tracking_required_frames: 确认追踪所需的连续帧数
+            face_stability_threshold: Face stability threshold (0-1)
+            tracking_required_frames: Consecutive frames required to confirm tracking
         """
         self.face_stability_threshold = face_stability_threshold
         self.tracking_required_frames = tracking_required_frames
         
-        # 追踪状态
+        # Tracking state
         self._tracked_bbox: Optional[np.ndarray] = None
         self._stable_frames = 0
         self._appearance_changed = False
         
-        # 历史记录
+        # History
         self._bbox_history: list[np.ndarray] = []
         self._max_history = 30
     
     def update(self, current_bbox: Optional[np.ndarray]) -> None:
-        """更新追踪状态"""
+        """Update tracking state"""
         if current_bbox is None:
-            # 无脸
+            # No face
             self._stable_frames = 0
             self._tracked_bbox = None
             return
         
         if self._tracked_bbox is None:
-            # 首次追踪
+            # First tracking
             self._tracked_bbox = current_bbox.copy()
             self._stable_frames = 1
         else:
-            # 检查是否稳定
+            # Check if stable
             iou = self._calculate_iou(current_bbox, self._tracked_bbox)
             
-            if iou > 0.5:  # 高度重叠
+            if iou > 0.5:  # High overlap
                 self._stable_frames += 1
-                # 平滑更新追踪框
+                # Smooth update tracking box
                 alpha = 0.3
                 self._tracked_bbox = alpha * current_bbox + (1 - alpha) * self._tracked_bbox
             else:
-                # 人脸切换或大幅移动
+                # Face switch or large movement
                 if self._stable_frames >= self.tracking_required_frames:
                     self._appearance_changed = True
                 self._stable_frames = 1
                 self._tracked_bbox = current_bbox.copy()
         
-        # 记录历史
+        # Record history
         self._bbox_history.append(current_bbox.copy())
         if len(self._bbox_history) > self._max_history:
             self._bbox_history.pop(0)
     
     def _calculate_iou(self, bbox1: np.ndarray, bbox2: np.ndarray) -> float:
-        """计算 IoU"""
+        """Calculate IoU"""
         x1 = max(bbox1[0], bbox2[0])
         y1 = max(bbox1[1], bbox2[1])
         x2 = min(bbox1[2], bbox2[2])
@@ -368,23 +368,23 @@ class AntiSpoofingMonitor:
         return intersection / union
     
     def is_tracking_stable(self) -> bool:
-        """追踪是否稳定"""
+        """Is tracking stable"""
         return self._stable_frames >= self.tracking_required_frames
     
     def is_appearance_changed(self) -> bool:
-        """人脸是否发生切换"""
+        """Has face switch occurred"""
         return self._appearance_changed
     
     def reset_appearance_flag(self) -> None:
-        """重置外观切换标志"""
+        """Reset appearance switch flag"""
         self._appearance_changed = False
     
     def get_stability_score(self) -> float:
-        """获取稳定性评分"""
+        """Get stability score"""
         if len(self._bbox_history) < 2:
             return 1.0
         
-        # 计算历史边界框的变化程度
+        # Calculate variation in historical bounding boxes
         if len(self._bbox_history) >= 2:
             last_bbox = self._bbox_history[-1]
             prev_bbox = self._bbox_history[-2]
@@ -394,7 +394,7 @@ class AntiSpoofingMonitor:
         return 1.0
     
     def reset(self) -> None:
-        """重置状态"""
+        """Reset state"""
         self._tracked_bbox = None
         self._stable_frames = 0
         self._appearance_changed = False

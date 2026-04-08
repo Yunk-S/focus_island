@@ -1,7 +1,8 @@
 """
-Focus Island 主程序
+Focus Island Main Entry Point
 
-支持桌面客户端模式、摄像头模式和服务器模式的多功能人脸识别专注检测后端。
+Multi-mode face-recognition focus detection backend supporting
+desktop client mode, camera mode, and server mode.
 
 Author: SSP Team
 """
@@ -13,31 +14,31 @@ import cv2
 
 
 def main():
-    """主函数"""
+    """Main function"""
     parser = argparse.ArgumentParser(
-        description="Focus Island - 专注检测后端",
+        description="Focus Island - Focus Detection Backend",
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument("--mode", type=str, default="camera",
                        choices=["camera", "server", "desktop"],
-                       help="运行模式: camera=本地摄像头, server=服务器模式, desktop=桌面客户端模式")
-    parser.add_argument("--camera", type=int, default=0, help="摄像头ID (默认0)")
-    parser.add_argument("--fps", type=float, default=4.0, help="目标帧率 (默认4)")
-    parser.add_argument("--host", type=str, default="127.0.0.1", help="服务器主机")
-    parser.add_argument("--ws-port", type=int, default=8765, help="WebSocket端口")
-    parser.add_argument("--api-port", type=int, default=8000, help="REST API端口")
-    parser.add_argument("--cuda", action="store_true", default=True, help="使用CUDA")
+                       help="Run mode: camera=local camera, server=server mode, desktop=desktop client mode")
+    parser.add_argument("--camera", type=int, default=0, help="Camera ID (default 0)")
+    parser.add_argument("--fps", type=float, default=4.0, help="Target frame rate (default 4)")
+    parser.add_argument("--host", type=str, default="127.0.0.1", help="Server host")
+    parser.add_argument("--ws-port", type=int, default=8765, help="WebSocket port")
+    parser.add_argument("--api-port", type=int, default=8000, help="REST API port")
+    parser.add_argument("--cuda", action="store_true", default=True, help="Use CUDA")
     parser.add_argument("--log-level", type=str, default="INFO",
                        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
-                       help="日志级别")
+                       help="Log level")
     
     args = parser.parse_args()
     
-    # 设置日志
+    # Setup logging
     logging.getLogger().setLevel(getattr(logging, args.log_level.upper(), logging.INFO))
     
     if args.mode == "server":
-        # 服务器模式 - 启动WebSocket + REST API服务器
+        # Server mode - start WebSocket + REST API server
         from focus_island.server import ServerMode
         import asyncio
         
@@ -73,7 +74,7 @@ def main():
             sys.exit(0)
     
     elif args.mode == "desktop":
-        # 桌面客户端模式 - 启动后端并打开桌面窗口
+        # Desktop client mode - start backend and open desktop window
         from focus_island.server import ServerMode
         import asyncio
         import threading
@@ -164,28 +165,28 @@ def run_camera_mode(args):
         
         session_started = False
         
-        # ===== 主循环 =====
+        # ===== Main loop =====
         while True:
             ret, frame = cap.read()
             if not ret:
                 break
             
-            frame = cv2.flip(frame, 1)  # 镜像
+            frame = cv2.flip(frame, 1)  # Mirror
             
             if not session_started:
-                # 预览模式
-                cv2.putText(frame, "按 'S' 开始专注", (200, 300),
+                # Preview mode
+                cv2.putText(frame, "Press 'S' to Start Focus", (200, 300),
                            cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 0), 3)
-                cv2.putText(frame, "按 'Q' 退出", (200, 360),
+                cv2.putText(frame, "Press 'Q' to Quit", (200, 360),
                            cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
                 
-                # 检测人脸预览
+                # Face detection preview
                 if workflow.model_manager:
                     faces = workflow.model_manager.detect_faces(frame)
                     for face in faces:
                         x1, y1, x2, y2 = map(int, face.bbox[:4])
                         cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                    cv2.putText(frame, f"检测到: {len(faces)} 张人脸", (10, 30),
+                    cv2.putText(frame, f"Detected: {len(faces)} face(s)", (10, 30),
                                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
                 
                 cv2.imshow("SSP - Smart Study Spot", frame)
@@ -194,26 +195,26 @@ def run_camera_mode(args):
                 if key == ord('q') or key == 27:
                     break
                 elif key == ord('s'):
-                    # ===== 开始专注会话 =====
-                    # 新流程: 先验证人脸，再开始专注
+                    # ===== Start focus session =====
+                    # New flow: verify face first, then start focus
                     
-                    # 1. 检查用户是否已绑定人脸
+                    # 1. Check if user has bound face
                     has_bound = workflow.authenticator.has_bound_face("user_001")
                     
                     if not has_bound:
-                        # 未绑定，先绑定人脸
-                        logger.info("用户未绑定人脸，正在绑定...")
+                        # Not bound, bind face first
+                        logger.info("User has not bound face, binding...")
                         bind_result = workflow.bind_face(
                             image=frame,
                             user_id="user_001"
                         )
                         if not bind_result.get("success"):
-                            logger.error(f"绑定人脸失败: {bind_result.get('error')}")
+                            logger.error(f"Failed to bind face: {bind_result.get('error')}")
                             continue
-                        logger.info(f"人脸绑定成功: {bind_result.get('message')}")
+                        logger.info(f"Face bound successfully: {bind_result.get('message')}")
                     
-                    # 2. 验证人脸
-                    logger.info("验证人脸...")
+                    # 2. Verify face
+                    logger.info("Verifying face...")
                     verify_result = workflow.verify_face(
                         image=frame,
                         user_id="user_001"
@@ -221,14 +222,14 @@ def run_camera_mode(args):
                     
                     if not verify_result.get("is_verified"):
                         if not verify_result.get("is_bound"):
-                            logger.error("用户未绑定人脸，请先绑定")
+                            logger.error("User has not bound face, please bind first")
                         else:
-                            logger.error(f"人脸验证失败: {verify_result.get('message')}")
+                            logger.error(f"Face verification failed: {verify_result.get('message')}")
                         continue
                     
-                    logger.info("人脸验证成功！")
+                    logger.info("Face verified successfully!")
                     
-                    # 3. 开始专注会话
+                    # 3. Start focus session
                     focus_result = workflow.start_focus(
                         image=frame,
                         user_id="user_001",
@@ -237,11 +238,11 @@ def run_camera_mode(args):
                     
                     if focus_result.get("success"):
                         session_started = True
-                        logger.info(f"专注会话开始! 会话ID: {focus_result['session_id']}")
+                        logger.info(f"Focus session started! Session ID: {focus_result['session_id']}")
                     else:
-                        logger.error(f"启动失败: {focus_result.get('error')}")
+                        logger.error(f"Start failed: {focus_result.get('error')}")
             else:
-                # ===== 专注会话模式 =====
+                # ===== Focus session mode =====
                 result = workflow.process_frame(frame)
                 
                 if result:
@@ -250,31 +251,31 @@ def run_camera_mode(args):
                 
                 key = cv2.waitKey(1) & 0xFF
                 if key == ord('q') or key == 27:
-                    # ===== 结束会话 =====
+                    # ===== End session =====
                     summary = workflow.end_session()
                     logger.info("=" * 60)
-                    logger.info("专注会话结束")
-                    logger.info(f"总积分: {summary.get('score_summary', {}).get('total_points', 0)}")
-                    logger.info(f"专注时长: {summary.get('score_summary', {}).get('total_focus_time_min', 0):.2f} 分钟")
+                    logger.info("Focus session ended")
+                    logger.info(f"Total points: {summary.get('score_summary', {}).get('total_points', 0)}")
+                    logger.info(f"Focus duration: {summary.get('score_summary', {}).get('total_focus_time_min', 0):.2f} minutes")
                     logger.info("=" * 60)
                     session_started = False
                 elif key == ord('e'):
-                    # 提前结束
+                    # Early end
                     workflow.end_session()
-                    logger.info("会话已结束")
+                    logger.info("Session ended")
                     session_started = False
         
-        # 清理
+        # Cleanup
         cap.release()
         cv2.destroyAllWindows()
         workflow.release()
-        logger.info("系统已退出")
+        logger.info("System exited")
         
     except KeyboardInterrupt:
-        logger.info("被用户中断")
+        logger.info("Interrupted by user")
         sys.exit(0)
     except Exception as e:
-        logger.exception(f"错误: {e}")
+        logger.exception(f"Error: {e}")
         sys.exit(1)
 
 

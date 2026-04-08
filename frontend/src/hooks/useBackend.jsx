@@ -49,12 +49,12 @@ export function BackendProvider({ children }) {
     head_pose: { pitch: 0, yaw: 0, roll: 0 },
     eye_data: { ear_avg: 0 },
     identity: { verified: false, similarity: 0 },
-    // 人脸状态
+    // Face status
     face_status: {
-      is_bound: false,      // 是否已绑定人脸
-      is_verified: false,   // 最后一次验证是否通过
-      last_similarity: 0,   // 最后一次相似度
-      last_check: null       // 上次检查时间
+      is_bound: false,      // Whether face is bound
+      is_verified: false,   // Whether last verification passed
+      last_similarity: 0,   // Last similarity score
+      last_check: null       // Last check time
     }
   });
 

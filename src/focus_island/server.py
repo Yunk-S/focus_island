@@ -1,7 +1,7 @@
 """
-Focus Island 服务器启动模块
+Focus Island Server Startup Module
 
-提供完整的 WebSocket + REST API 服务器，支持桌面客户端连接。
+Provides complete WebSocket + REST API server, supporting desktop client connections.
 
 Author: SSP Team
 """
@@ -81,7 +81,7 @@ def _open_video_capture(camera_id: int) -> cv2.VideoCapture:
 
 
 class ServerMode:
-    """服务器模式"""
+    """Server mode"""
     
     def __init__(
         self,
@@ -97,36 +97,36 @@ class ServerMode:
         self.camera_id = camera_id
         self.use_cuda = use_cuda
         
-        # 工作流
+        # Workflow
         self.workflow = None
         
-        # 摄像头（默认关闭，前端进入专注模式后再 start_camera）
+        # Camera (off by default, started when frontend enters focus mode)
         self.camera = None
         self.capture_running = False
         self.shutdown_requested = False
         
-        # MJPEG 流
+        # MJPEG stream
         self.latest_frame = None
         self.frame_lock = threading.Lock()
         
-        # 会话状态
+        # Session state
         self.session_active = False
     
     async def initialize(self):
-        """初始化系统"""
+        """Initialize system"""
         logger.info("=" * 60)
         logger.info("Focus Island Server Starting...")
         logger.info("=" * 60)
         
-        # 导入工作流
+        # Import workflow
         try:
             from focus_island.workflow import FocusWorkFlow
             from focus_island.types import PipelineConfig
             
-            # 创建配置
+            # Create config
             config = PipelineConfig()
             
-            # 创建工作流
+            # Create workflow
             self.workflow = FocusWorkFlow(
                 config=config,
                 use_cuda=self.use_cuda,
@@ -148,7 +148,7 @@ class ServerMode:
             return False
     
     def _capture_loop(self):
-        """视频捕获循环"""
+        """Video capture loop"""
         logger.info("Capture thread started")
         fail_streak = 0
         last_fail_log = 0.0
@@ -168,49 +168,49 @@ class ServerMode:
                 continue
             fail_streak = 0
             
-            # 镜像翻转
+            # Mirror flip
             frame = cv2.flip(frame, 1)
             
-            # 更新最新帧
+            # Update latest frame
             with self.frame_lock:
                 self.latest_frame = frame.copy()
             
-            # 如果会话活跃，处理帧
+            # If session is active, process frame
             if self.session_active and self.workflow:
                 try:
                     result = self.workflow.process_frame(frame)
                     if result:
-                        # 触发 WebSocket 广播 (如果可用)
+                        # Trigger WebSocket broadcast (if available)
                         pass
                 except Exception as e:
                     logger.error(f"Frame processing error: {e}")
             
-            # 控制帧率 ~30fps
+            # Control frame rate ~30fps
             time.sleep(0.033)
         
         logger.info("Capture thread stopped")
     
     def get_latest_frame(self) -> np.ndarray:
-        """获取最新帧"""
+        """Get latest frame"""
         with self.frame_lock:
             return self.latest_frame.copy() if self.latest_frame is not None else None
     
     def get_mjpeg_bytes(self) -> bytes:
-        """获取 MJPEG 格式的帧"""
+        """Get frame in MJPEG format"""
         frame = self.get_latest_frame()
         if frame is None:
             return b''
         
-        # 编码为 JPEG
+        # Encode to JPEG
         ret, jpeg = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
         if not ret:
             return b''
         
-        # 构建 MJPEG 数据
+        # Build MJPEG data
         return b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + jpeg.tobytes() + b'\r\n'
     
     async def start_websocket_server(self):
-        """启动 WebSocket 服务器"""
+        """Start WebSocket server"""
         try:
             from fastapi import FastAPI
             from fastapi.middleware.cors import CORSMiddleware
@@ -299,9 +299,9 @@ class ServerMode:
                     media_type="multipart/x-mixed-replace; boundary=frame"
                 )
             
-            # 会话控制 - 新流程：先验证/绑定，再开始专注
+            # Session control - new flow: verify/bind face first, then start focus
             
-            # 1. 验证人脸（不保存，不开始专注）
+            # 1. Verify face (don't save, don't start focus)
             @app.post("/api/face/verify")
             async def verify_face(
                 user_id: str = "default_user",
@@ -319,7 +319,7 @@ class ServerMode:
                     return {"success": False, "error": "No frame available"}
                 return {"success": False, "error": "Not initialized"}
             
-            # 2. 绑定人脸（保存到本地）
+            # 2. Bind face (save to local)
             @app.post("/api/face/bind")
             async def bind_face(
                 user_id: str = "default_user",
@@ -337,7 +337,7 @@ class ServerMode:
                     return {"success": False, "error": "No frame available"}
                 return {"success": False, "error": "Not initialized"}
             
-            # 3. 检查用户是否已绑定人脸
+            # 3. Check if user has bound face
             @app.get("/api/face/status/{user_id}")
             async def get_face_status(user_id: str):
                 if self.workflow:
@@ -349,7 +349,7 @@ class ServerMode:
                     }
                 return {"success": False, "error": "Not initialized"}
             
-            # 4. 删除已绑定的人脸
+            # 4. Delete bound face
             @app.delete("/api/face/{user_id}")
             async def delete_face(user_id: str):
                 if self.workflow:
@@ -357,7 +357,7 @@ class ServerMode:
                     return result
                 return {"success": False, "error": "Not initialized"}
             
-            # 5. 开始专注（验证通过后才开始）
+            # 5. Start focus (only after verification passes)
             @app.post("/api/session/start")
             async def start_session(
                 user_id: str = "default_user",
@@ -396,10 +396,10 @@ class ServerMode:
                     return {"success": True, "language": language}
                 return {"success": False, "error": "Not initialized"}
             
-            # 摄像头控制
+            # Camera control
             @app.post("/api/camera/start")
             async def start_camera():
-                """开启摄像头"""
+                """Start camera"""
                 if self.camera is None or not self.camera.isOpened():
                     self.camera = _open_video_capture(self.camera_id)
                     if not self.camera.isOpened():
@@ -408,7 +408,7 @@ class ServerMode:
                     self.camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
                     self.capture_running = True
                     
-                    # 重启捕获线程
+                    # Restart capture thread
                     if not hasattr(self, 'capture_thread') or not self.capture_thread.is_alive():
                         self.capture_thread = threading.Thread(target=self._capture_loop, daemon=True)
                         self.capture_thread.start()
@@ -422,7 +422,7 @@ class ServerMode:
             
             @app.post("/api/camera/stop")
             async def stop_camera():
-                """关闭摄像头"""
+                """Stop camera"""
                 self.capture_running = False
                 ct = getattr(self, "capture_thread", None)
                 if ct is not None and ct.is_alive():
@@ -434,7 +434,7 @@ class ServerMode:
             
             @app.get("/api/camera/status")
             async def camera_status():
-                """获取摄像头状态"""
+                """Get camera status"""
                 camera_on = self.camera is not None and self.camera.isOpened()
                 return {
                     "success": True,
@@ -571,11 +571,11 @@ class ServerMode:
                                     }))
                             
                             elif msg_type == "pause_session":
-                                # 暂停逻辑
+                                # Pause logic
                                 await websocket.send(_ws_json({"type": "paused"}))
                             
                             elif msg_type == "resume_session":
-                                # 恢复逻辑
+                                # Resume logic
                                 await websocket.send(_ws_json({"type": "resumed"}))
                             
                             elif msg_type == "start_camera":
@@ -711,7 +711,7 @@ class ServerMode:
             return False
     
     def cleanup(self):
-        """清理资源"""
+        """Cleanup resources"""
         logger.info("Cleaning up...")
         self.shutdown_requested = True
         self.capture_running = False
@@ -728,7 +728,7 @@ class ServerMode:
 
 
 async def main():
-    """主函数"""
+    """Main function"""
     parser = argparse.ArgumentParser(description="Focus Island Backend Server")
     parser.add_argument("--host", type=str, default="127.0.0.1", help="Server host")
     parser.add_argument("--ws-port", type=int, default=8765, help="WebSocket port")
@@ -747,12 +747,12 @@ async def main():
     )
     
     try:
-        # 初始化
+        # Initialize
         if not await server.initialize():
             logger.error("Failed to initialize server")
             return 1
         
-        # 启动服务器
+        # Start server
         await server.start_websocket_server()
         
     except KeyboardInterrupt:

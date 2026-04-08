@@ -594,9 +594,9 @@ function LiveModePageInner() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // 不自动启动后端摄像头，等待用户在房间内主动开启
+  // Do not auto-start backend camera, wait for user to manually enable in room
 
-  // 仅 /live/room 显示视频房间，避免创建房间后 signalingState=in_room 抢走主持界面
+  // Only /live/room shows video room, avoid signalingState=in_room from taking over host screen after creating room
   if (location.pathname === '/live/room' || location.pathname.endsWith('/live/room')) {
     return <LiveRoomScreen navigate={navigate} />;
   }

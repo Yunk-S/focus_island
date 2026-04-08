@@ -1,20 +1,20 @@
 """
-专注状态机与计分系统模块
+Focus FSM and Scoring System Module
 
-实现专注检测的状态机逻辑和积分计算。
+Implements focus detection state machine logic and points calculation.
 
-状态流转:
-IDLE -> FOCUSED: 检测到有效人脸和专注姿态
-FOCUSED -> WARNING: 姿态或眼部状态异常
-WARNING -> FOCUSED: 在5秒宽容时间内恢复
-WARNING -> INTERRUPTED: 宽容时间结束
-INTERRUPTED -> FOCUSED: 重新开始专注
-任意 -> IDLE: 会话重置
+State transitions:
+IDLE -> FOCUSED: Detected valid face and focus pose
+FOCUSED -> WARNING: Abnormal pose or eye state
+WARNING -> FOCUSED: Recovery within 5-second grace period
+WARNING -> INTERRUPTED: Grace period ended
+INTERRUPTED -> FOCUSED: Restart focus
+Any -> IDLE: Session reset
 
-计分规则:
-- 每分钟基础积分: 10分
-- 里程碑奖励: 25分钟/+50分, 50分钟/+150分
-- 只加不减, 中断只重置连续计时
+Scoring rules:
+- Base points: 10 points per minute
+- Milestone bonuses: 25min/+50pts, 50min/+150pts
+- Points only increase, interruptions reset streak timer only
 
 Author: SSP Team
 """
@@ -42,26 +42,26 @@ logger = logging.getLogger(__name__)
 
 
 class FocusRuleChecker:
-    """专注规则检查器
+    """Focus Rule Checker
     
-    检查头部姿态和眼部状态是否满足专注条件。
+    Checks if head pose and eye state meet focus conditions.
     """
     
     def __init__(self, config: PipelineConfig):
         """
-        初始化规则检查器
+        Initialize rule checker
         
         Args:
-            config: 流水线配置
+            config: Pipeline configuration
         """
         self.config = config
         
-        # 主规则阈值 (头部姿态)
-        self.pitch_threshold = config.pitch_threshold  # 默认 20度
-        self.yaw_threshold = config.yaw_threshold      # 默认 25度
+        # Main rule thresholds (head pose)
+        self.pitch_threshold = config.pitch_threshold  # Default 20 degrees
+        self.yaw_threshold = config.yaw_threshold      # Default 25 degrees
         
-        # 辅助规则阈值 (EAR)
-        self.ear_threshold = config.ear_threshold      # 默认 0.18
+        # Auxiliary rule thresholds (EAR)
+        self.ear_threshold = config.ear_threshold      # Default 0.18
         
         logger.info(
             f"FocusRuleChecker: pitch<{self.pitch_threshold}°, yaw<{self.yaw_threshold}°, "
@@ -70,13 +70,13 @@ class FocusRuleChecker:
     
     def check_pose(self, pitch: float, yaw: float) -> tuple[bool, WarningReason]:
         """
-        检查头部姿态是否有效 (主规则)
+        Check if head pose is valid (main rule)
         
-        条件: -20° < pitch < +20° 且 -25° < yaw < +25°
+        Conditions: -20° < pitch < +20° and -25° < yaw < +25°
         
         Args:
-            pitch: 俯仰角 (度)
-            yaw: 偏航角 (度)
+            pitch: Pitch angle (degrees)
+            yaw: Yaw angle (degrees)
             
         Returns:
             (is_valid, warning_reason)
@@ -91,12 +91,12 @@ class FocusRuleChecker:
     
     def check_eyes(self, ear_avg: float) -> tuple[bool, WarningReason]:
         """
-        检查眼部状态是否有效 (辅助规则)
+        Check if eye state is valid (auxiliary rule)
         
-        条件: EAR > 0.18
+        Condition: EAR > 0.18
         
         Args:
-            ear_avg: 平均 EAR 值
+            ear_avg: Average EAR value
             
         Returns:
             (is_valid, warning_reason)
@@ -114,18 +114,18 @@ class FocusRuleChecker:
         ear_avg: float
     ) -> FocusRuleResult:
         """
-        综合检查所有规则
+        Comprehensive check of all rules
         
         Args:
-            has_face: 是否检测到人脸
-            pitch: 俯仰角
-            yaw: 偏航角
-            ear_avg: 平均 EAR 值
+            has_face: Face detected
+            pitch: Pitch angle
+            yaw: Yaw angle
+            ear_avg: Average EAR value
             
         Returns:
             FocusRuleResult
         """
-        # 无脸情况
+        # No face case
         if not has_face:
             return FocusRuleResult(
                 pose_valid=False,
@@ -135,16 +135,16 @@ class FocusRuleChecker:
                 details={"reason": "No face detected"}
             )
         
-        # 检查主规则 (姿态)
+        # Check main rule (pose)
         pose_valid, pose_warning = self.check_pose(pitch, yaw)
         
-        # 检查辅助规则 (眼睛)
+        # Check auxiliary rule (eyes)
         eyes_valid, eyes_warning = self.check_eyes(ear_avg)
         
-        # 组合判断
+        # Combined judgment
         overall_valid = pose_valid and eyes_valid
         
-        # 确定警告原因
+        # Determine warning reason
         if not overall_valid:
             if not pose_valid:
                 warning = pose_warning
@@ -169,9 +169,9 @@ class FocusRuleChecker:
 
 
 class FocusFSM:
-    """专注状态机
+    """Focus State Machine
     
-    核心状态流转逻辑，包含 5 秒宽容期。
+    Core state transition logic with 5-second grace period.
     """
     
     def __init__(
@@ -180,54 +180,54 @@ class FocusFSM:
         on_state_change: Optional[Callable[[FocusState, FocusState], None]] = None
     ):
         """
-        初始化状态机
+        Initialize state machine
         
         Args:
-            config: 流水线配置
-            on_state_change: 状态变化回调
+            config: Pipeline configuration
+            on_state_change: State change callback
         """
         self.config = config
-        self.grace_period = config.grace_period_seconds  # 默认 5 秒
+        self.grace_period = config.grace_period_seconds  # Default 5 seconds
         self.on_state_change = on_state_change
         
-        # 状态
+        # State
         self._state = FocusState.IDLE
         self._grace_timer = 0.0
         self._warning_start_time = 0.0
         
-        # 统计
+        # Statistics
         self._total_warning_time = 0.0
         self._interruption_count = 0
         self._state_change_count = 0
         
-        # 时间
+        # Time
         self._session_start_time = time.time()
         self._last_valid_time = time.time()
         self._last_process_time = time.time()
         
-        # 规则检查器
+        # Rule checker
         self.rule_checker = FocusRuleChecker(config)
         
         logger.info(f"FocusFSM: grace_period={self.grace_period}s")
     
     @property
     def state(self) -> FocusState:
-        """当前状态"""
+        """Current state"""
         return self._state
     
     @property
     def grace_remaining(self) -> float:
-        """剩余宽容时间"""
+        """Remaining grace time"""
         return max(0.0, self._grace_timer)
     
     @property
     def is_focused(self) -> bool:
-        """是否专注"""
+        """Is focused"""
         return self._state == FocusState.FOCUSED
     
     @property
     def is_warning(self) -> bool:
-        """是否警告中"""
+        """Is in warning state"""
         return self._state == FocusState.WARNING
     
     def process_frame(
@@ -240,21 +240,21 @@ class FocusFSM:
         identity_verified: bool = True
     ) -> tuple[FocusState, WarningReason, bool]:
         """
-        处理单帧
+        Process single frame
         
-        状态流转:
-        - IDLE: 无脸或初始
-        - FOCUSED: 有效专注
-        - WARNING: 偏离/闭眼，开始宽容计时
-        - INTERRUPTED: 宽容超时
+        State transitions:
+        - IDLE: No face or initial
+        - FOCUSED: Valid focus
+        - WARNING: Deviation/eyes closed, start grace timer
+        - INTERRUPTED: Grace timeout
         
         Args:
-            has_face: 是否检测到人脸
-            pitch: 俯仰角
-            yaw: 偏航角
-            ear_avg: 平均 EAR 值
-            delta_time: 帧间隔 (秒)
-            identity_verified: 身份是否通过验证（False 时强制留在 WARNING/IDLE）
+            has_face: Face detected
+            pitch: Pitch angle
+            yaw: Yaw angle
+            ear_avg: Average EAR value
+            delta_time: Frame interval (seconds)
+            identity_verified: Identity verified (False forces non-focus state)
             
         Returns:
             (current_state, warning_reason, focus_valid)
@@ -262,10 +262,10 @@ class FocusFSM:
         current_time = time.time()
         old_state = self._state
         
-        # 检查规则
+        # Check rules
         rule_result = self.rule_checker.check_all(has_face, pitch, yaw, ear_avg)
         
-        # 身份未验证时，强制留在非专注状态
+        # When identity not verified, force to non-focus state
         if not identity_verified:
             if self._state == FocusState.FOCUSED:
                 self._transition(FocusState.WARNING, current_time)
@@ -277,22 +277,22 @@ class FocusFSM:
                     self._transition(FocusState.INTERRUPTED, current_time)
             return self._state, rule_result.warning_reason, False
         
-        # 状态转换逻辑（原有逻辑）
+        # State transition logic (original logic)
         if self._state == FocusState.IDLE:
-            # IDLE 状态
+            # IDLE state
             if rule_result.overall_valid:
                 self._transition(FocusState.FOCUSED, current_time)
                 self._last_valid_time = current_time
                 self._grace_timer = 0.0
             elif not has_face:
-                pass  # 保持 IDLE
+                pass  # Stay in IDLE
             else:
                 self._transition(FocusState.WARNING, current_time)
                 self._grace_timer = self.grace_period
                 self._warning_start_time = current_time
         
         elif self._state == FocusState.FOCUSED:
-            # FOCUSED 状态 - 专注中
+            # FOCUSED state - focusing
             self._last_valid_time = current_time
             
             if not has_face:
@@ -303,22 +303,22 @@ class FocusFSM:
                 self._grace_timer = self.grace_period
                 self._warning_start_time = current_time
             else:
-                # 保持专注，清零宽容计时
+                # Keep focus, reset grace timer
                 self._grace_timer = 0.0
         
         elif self._state == FocusState.WARNING:
-            # WARNING 状态 - 宽容期
+            # WARNING state - grace period
             if not has_face:
                 self._transition(FocusState.IDLE, current_time)
                 self._total_warning_time += current_time - self._warning_start_time
                 self._grace_timer = 0.0
             elif rule_result.overall_valid:
-                # 恢复到专注
+                # Recover to focus
                 self._transition(FocusState.FOCUSED, current_time)
                 self._total_warning_time += current_time - self._warning_start_time
                 self._grace_timer = 0.0
             else:
-                # 继续警告，扣减宽容时间
+                # Continue warning, deduct grace time
                 self._grace_timer -= delta_time
                 if self._grace_timer <= 0:
                     self._transition(FocusState.INTERRUPTED, current_time)
@@ -326,7 +326,7 @@ class FocusFSM:
                     self._total_warning_time += current_time - self._warning_start_time
         
         elif self._state == FocusState.INTERRUPTED:
-            # INTERRUPTED 状态 - 中断
+            # INTERRUPTED state
             if rule_result.overall_valid:
                 self._transition(FocusState.FOCUSED, current_time)
                 self._last_valid_time = current_time
@@ -335,7 +335,7 @@ class FocusFSM:
         return self._state, rule_result.warning_reason, rule_result.overall_valid
     
     def _transition(self, new_state: FocusState, timestamp: float) -> None:
-        """状态转换"""
+        """State transition"""
         if self._state != new_state:
             old_state = self._state
             self._state = new_state
@@ -347,7 +347,7 @@ class FocusFSM:
             logger.debug(f"FSM: {old_state.value} -> {new_state.value}")
     
     def reset(self) -> None:
-        """重置状态机"""
+        """Reset state machine"""
         self._state = FocusState.IDLE
         self._grace_timer = 0.0
         self._warning_start_time = 0.0
@@ -359,7 +359,7 @@ class FocusFSM:
         logger.info("FocusFSM reset")
     
     def get_stats(self) -> dict:
-        """获取统计"""
+        """Get statistics"""
         current_time = time.time()
         return {
             "state": self._state.value,
@@ -373,12 +373,12 @@ class FocusFSM:
 
 
 class ScoringSystem:
-    """计分系统
+    """Scoring System
     
-    积分规则:
-    - 基础分: 每分钟 10 分
-    - 里程碑: 25分钟/+50分, 50分钟/+150分, 90分钟/+300分
-    - 只加不减
+    Scoring rules:
+    - Base: 10 points per minute
+    - Milestones: 25min/+50pts, 50min/+150pts, 90min/+300pts
+    - Points only increase
     """
     
     def __init__(
@@ -387,24 +387,24 @@ class ScoringSystem:
         daily_limit: Optional[int] = None
     ):
         """
-        初始化计分系统
+        Initialize scoring system
         
         Args:
-            config: 流水线配置
-            daily_limit: 每日积分上限
+            config: Pipeline configuration
+            daily_limit: Daily points limit
         """
         self.config = config
-        self.points_per_minute = config.points_per_minute  # 默认 10
+        self.points_per_minute = config.points_per_minute  # Default 10
         self.daily_limit = daily_limit or config.daily_limit
         
-        # 里程碑
+        # Milestones
         self.milestones = [
             Milestone(duration_minutes=25, bonus_points=50),
             Milestone(duration_minutes=50, bonus_points=150),
             Milestone(duration_minutes=90, bonus_points=300),
         ]
         
-        # 积分统计
+        # Points statistics
         self._total_points = 0
         self._bonus_points = 0
         self._base_points = 0
@@ -413,7 +413,7 @@ class ScoringSystem:
         self._session_start = time.time()
         self._reached_milestones = set()
         
-        # 最后检查时间
+        # Last check time
         self._last_minute_check = 0.0
         
         logger.info(
@@ -423,35 +423,35 @@ class ScoringSystem:
     
     @property
     def total_points(self) -> int:
-        """总积分"""
+        """Total points"""
         return self._total_points
     
     @property
     def current_streak_minutes(self) -> float:
-        """当前连续专注时长 (分钟)"""
+        """Current consecutive focus duration (minutes)"""
         return self._current_streak_time / 60.0
     
     def add_focus_time(self, seconds: float) -> dict:
         """
-        添加专注时间
+        Add focus time
         
         Args:
-            seconds: 专注秒数
+            seconds: Focus seconds
             
         Returns:
-            更新信息
+            Update info
         """
         self._total_focus_time += seconds
         self._current_streak_time += seconds
         
-        # 计算基础积分
+        # Calculate base points
         minutes_elapsed = int(self._total_focus_time / 60.0)
         self._base_points = minutes_elapsed * self.points_per_minute
         
-        # 计算里程碑奖励
+        # Calculate milestone bonuses
         milestones_reached = self._check_milestones()
         
-        # 总积分
+        # Total points
         self._total_points = min(
             self._base_points + self._bonus_points,
             self.daily_limit
@@ -467,7 +467,7 @@ class ScoringSystem:
         }
     
     def _check_milestones(self) -> List[dict]:
-        """检查里程碑"""
+        """Check milestones"""
         reached = []
         streak_min = self.current_streak_minutes
         
@@ -492,10 +492,10 @@ class ScoringSystem:
         return reached
     
     def on_interruption(self) -> None:
-        """中断回调 - 重置连续计时，保留已得积分"""
+        """Interruption callback - reset streak timer, keep earned points"""
         self._current_streak_time = 0.0
         
-        # 重置里程碑进度
+        # Reset milestone progress
         for m in self.milestones:
             if m.reached:
                 self._reached_milestones.discard(m.duration_minutes)
@@ -506,7 +506,7 @@ class ScoringSystem:
         logger.debug("Scoring: interruption - streak reset")
     
     def reset(self) -> None:
-        """重置计分"""
+        """Reset scoring"""
         self._total_points = 0
         self._bonus_points = 0
         self._base_points = 0
@@ -522,7 +522,7 @@ class ScoringSystem:
         logger.info("ScoringSystem reset")
     
     def get_summary(self) -> dict:
-        """获取积分摘要"""
+        """Get points summary"""
         return {
             "total_points": self._total_points,
             "base_points": self._base_points,
@@ -536,9 +536,9 @@ class ScoringSystem:
 
 
 class SessionManager:
-    """会话管理器
+    """Session Manager
     
-    管理整个专注会话的生命周期。
+    Manages the lifecycle of the entire focus session.
     """
     
     def __init__(
@@ -549,13 +549,13 @@ class SessionManager:
         seat_id: Optional[str] = None
     ):
         """
-        初始化会话管理器
+        Initialize session manager
         
         Args:
-            config: 流水线配置
-            session_id: 会话 ID
-            user_id: 用户 ID
-            seat_id: 座位 ID
+            config: Pipeline configuration
+            session_id: Session ID
+            user_id: User ID
+            seat_id: Seat ID
         """
         import uuid
         
@@ -564,18 +564,18 @@ class SessionManager:
         self.user_id = user_id
         self.seat_id = seat_id
         
-        # 初始化组件
+        # Initialize components
         self.fsm = FocusFSM(config)
         self.scoring = ScoringSystem(config)
         
-        # 会话数据
+        # Session data
         self.session_data = SessionData(
             session_id=self.session_id,
             user_id=user_id
         )
         self.session_data.stats.session_start_time = time.time()
         
-        # 回调
+        # Callbacks
         self._callbacks = {
             "state_change": [],
             "milestone": [],
@@ -586,12 +586,12 @@ class SessionManager:
         logger.info(f"SessionManager: {self.session_id}")
     
     def register_callback(self, event: str, callback: Callable) -> None:
-        """注册回调"""
+        """Register callback"""
         if event in self._callbacks:
             self._callbacks[event].append(callback)
     
     def _emit(self, event: str, *args, **kwargs) -> None:
-        """触发回调"""
+        """Emit callback"""
         for callback in self._callbacks.get(event, []):
             try:
                 callback(*args, **kwargs)
@@ -599,7 +599,7 @@ class SessionManager:
                 logger.error(f"Callback error in {event}: {e}")
     
     def start_session(self) -> None:
-        """开始会话"""
+        """Start session"""
         self.session_data.stats.session_start_time = time.time()
         self.session_data.is_active = True
         logger.info(f"Session started: {self.session_id}")
@@ -615,53 +615,53 @@ class SessionManager:
         identity_verified: bool = True
     ) -> dict:
         """
-        处理单帧
+        Process single frame
         
         Args:
-            has_face: 是否检测到人脸
-            pitch: 俯仰角
-            yaw: 偏航角
-            ear_avg: 平均 EAR 值
-            frame_id: 帧 ID
-            delta_time: 帧间隔
-            identity_verified: 身份是否通过验证
+            has_face: Face detected
+            pitch: Pitch angle
+            yaw: Yaw angle
+            ear_avg: Average EAR value
+            frame_id: Frame ID
+            delta_time: Frame interval
+            identity_verified: Identity verified
             
         Returns:
-            处理结果
+            Processing result
         """
         old_state = self.fsm.state
         
-        # 处理帧（传递身份验证状态）
+        # Process frame (pass identity verification state)
         new_state, warning_reason, is_valid = self.fsm.process_frame(
             has_face, pitch, yaw, ear_avg, delta_time,
             identity_verified=identity_verified
         )
         
-        # 状态变化
+        # State change
         if old_state != new_state:
             self._emit("state_change", old_state, new_state)
             
-            # 中断时
+            # On interruption
             if new_state == FocusState.INTERRUPTED:
                 self.scoring.on_interruption()
                 self.session_data.stats.interruption_count += 1
                 self._emit("interruption", self.session_data.stats.interruption_count)
         
-        # 专注时累加时间
+        # Accumulate time when focused
         if self.fsm.is_focused and is_valid:
             self.session_data.stats.total_focus_time += delta_time
             score_update = self.scoring.add_focus_time(delta_time)
             
-            # 里程碑通知
+            # Milestone notification
             for m in score_update.get("milestones_reached", []):
                 self._emit("milestone", m)
         
-        # 警告时累加警告时间
+        # Accumulate warning time when warning
         if self.fsm.is_warning:
             self.session_data.stats.total_warning_time += delta_time
             self.session_data.stats.warning_count += 1
         
-        # 更新状态
+        # Update state
         self.session_data.stats.current_state = self.fsm.state
         self.session_data.stats.grace_period_remaining = self.fsm.grace_remaining
         self.session_data.stats.current_streak_minutes = self.scoring.current_streak_minutes
@@ -669,7 +669,7 @@ class SessionManager:
         self.session_data.stats.interruption_count = self.fsm._interruption_count
         self.session_data.stats.warning_count = self.fsm.get_stats()["state_change_count"]
         
-        # 返回结果
+        # Return result
         return {
             "session_id": self.session_id,
             "frame_id": frame_id,
@@ -696,7 +696,7 @@ class SessionManager:
         }
     
     def end_session(self) -> dict:
-        """结束会话"""
+        """End session"""
         self.session_data.is_active = False
         self.session_data.end_time = datetime.now()
         
@@ -706,7 +706,7 @@ class SessionManager:
         return summary
     
     def get_summary(self) -> dict:
-        """获取会话摘要"""
+        """Get session summary"""
         return {
             "session_id": self.session_id,
             "user_id": self.user_id,
@@ -719,7 +719,7 @@ class SessionManager:
         }
     
     def reset_session(self) -> None:
-        """重置会话"""
+        """Reset session"""
         import uuid
         self.session_id = str(uuid.uuid4())[:8]
         self.session_data = SessionData(

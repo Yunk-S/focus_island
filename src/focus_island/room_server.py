@@ -1,11 +1,11 @@
 """
-Focus Island — 房间信令服务器 (Room-based WebSocket Signaling Server)
-用于 WebRTC P2P 握手的牵线搭桥，不转发视频流。
+Focus Island — Room Signaling Server (Room-based WebSocket Signaling Server)
+For WebRTC P2P handshake signaling, does not forward video streams.
 
-架构：
-  FastAPI ASGI (Uvicorn) + WebSocket 路由
-  内存字典 rooms = { room_id: [client_ws, ...] }
-  当收到 SDP / ICE 消息时，只广播给同房间的其他客户端。
+Architecture:
+  FastAPI ASGI (Uvicorn) + WebSocket routing
+  In-memory dict rooms = { room_id: [client_ws, ...] }
+  When receiving SDP / ICE messages, only broadcast to other clients in the same room.
 
 Author: SSP Team
 """

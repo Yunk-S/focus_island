@@ -1,33 +1,33 @@
-# Focus Island 专注岛屿
+# Focus Island
 
-> **v2.0** · 专注检测 · 人脸识别 · 番茄钟 · WebRTC 协作
+> **v2.0** · Focus Detection · Face Recognition · Pomodoro · WebRTC Collaboration
 >
-> 🌐 [English](./README_EN.md) | 📖 当前：中文
+> 🌐 [中文](./README.md) | 📖 Current: English
 
-**Focus Island** 是一款基于人脸视觉分析的桌面专注应用。通过实时检测眼部开合度（EAR）、头部姿态和面部特征向量，为用户提供可验证的专注时长记录。
+**Focus Island** is a desktop focus application based on facial vision analysis. By real-time detection of eye opening and closing ratio (EAR), head posture, and facial feature vectors, we provide users with verifiable records of focus duration.
 
 ---
 
-## 核心功能 / Core Features
+## Core Features
 
-| 功能 Feature | 说明 Description |
+| Feature | Description |
 |------|------|
-| **人脸身份验证 Face Auth** | 首次使用绑定个人面部特征，后续定期自动复核，防止代挂 |
-| **专注状态判断 Focus Detection** | EAR + 头部姿态双维度，自动区分专注/分心/中断 |
-| **积分激励系统 Points System** | 按专注时长累积积分，达里程碑触发奖励提示 |
-| **WebRTC 协作房间 Collaboration Room** | 实时视频房间，可看到其他成员的专注状态 |
-| **国际化 i18n** | 中文 / English 内置多语言支持 |
+| **Face Auth** | First-time use binds personal facial features, with periodic automatic re-verification to prevent impersonation |
+| **Focus Detection** | EAR + head posture dual-dimension, auto-distinguishes focused / distracted / interrupted |
+| **Points System** | Accumulate points based on focus time, milestone rewards trigger on achievement |
+| **WebRTC Collaboration Room** | Real-time video room, see other members' focus status at a glance |
+| **i18n** | Chinese / English built-in multi-language support |
 
 ---
 
-## 技术架构 / Architecture
+## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────┐
 │                   Frontend (Electron)               │
 │  React 18 + Vite + TailwindCSS + Framer Motion     │
-│  ws://127.0.0.1:8765  ←── WebSocket 实时帧/状态    │
-│  http://127.0.0.1:8000 ←── REST API 绑定/会话      │
+│  ws://127.0.0.1:8765  ←── WebSocket  frame/status   │
+│  http://127.0.0.1:8000 ←── REST API  bind/session  │
 └────────────────────────┬────────────────────────────┘
                          │
           ┌──────────────┴──────────────┐
@@ -38,49 +38,44 @@
           └───────────────────────────────┘
 
               ┌──────────────────────┐
-              │  Room Server (WS :8766) │  WebRTC 信令
+              │  Room Server (WS :8766) │  WebRTC signaling
               └──────────────────────┘
 ```
 
-### 前端技术栈 / Frontend Stack
+### Frontend Stack
 
-| 类别 | 技术 | 作用 |
+| Category | Tech | Purpose |
 |------|------|------|
-| 运行时 | Electron 29 | 桌面窗口、IPC 与原生交互 |
-| 构建 | Vite 5 + React 18 | 极速 HMR 开发体验 |
-| 样式 | Tailwind CSS 3 + Radix UI | 现代暗色 UI 组件体系 |
-| 动画 | Framer Motion 11 | 状态切换与微交互动效 |
+| Runtime | Electron 29 | Desktop window, IPC, native interaction |
+| Build | Vite 5 + React 18 | Fast HMR development experience |
+| Styling | Tailwind CSS 3 + Radix UI | Modern dark UI component system |
+| Animation | Framer Motion 11 | State transitions & micro-interaction effects |
 
-### 后端技术栈 / Backend Stack
+### Backend Stack
 
-| 类别 | 技术 | 作用 |
+| Category | Tech | Purpose |
 |------|------|------|
-| HTTP API | FastAPI + Uvicorn | 身份绑定 / 验证 / 会话 REST 接口 |
-| 实时通信 | Python `websockets` | 帧流推送、专注状态推送 |
-| 人脸分析 | **UniFace** (PyPI ≥3.0) | RetinaFace / SCRFD / ArcFace / Landmark106 / HeadPose |
-| 推理引擎 | ONNX Runtime ≥1.16 | GPU（CUDA）或 CPU 执行 |
+| HTTP API | FastAPI + Uvicorn | Identity binding / verification / session REST API |
+| Real-time | Python `websockets` | Frame streaming, focus state push |
+| Face Analysis | **UniFace** (PyPI ≥3.0) | RetinaFace / SCRFD / ArcFace / Landmark106 / HeadPose |
+| Inference | ONNX Runtime ≥1.16 | GPU (CUDA) or CPU execution |
 
-### UniFace 模型说明 / Model Reference
+### UniFace Model Reference
 
-| 模型 Model | 类型 Type | 用途 Usage |
+| Model | Type | Usage |
 |------|------|------|
-| **RetinaFace / SCRFD** | 人脸检测 Face Detection | 定位画面中人脸 bbox + 5 点关键点 |
-| **ArcFace (512d)** | 人脸识别 Face Recognition | 生成 512 维特征向量用于身份比对 |
-| **Landmark106** | 关键点检测 Landmark Detection | 106 点精细人脸网格，计算 EAR 眼部指标 |
-| **HeadPose (ResNet18)** | 头部姿态估计 Head Pose Estimation | Pitch / Yaw / Roll 三轴旋转角度 |
+| **RetinaFace / SCRFD** | Face Detection | Locate face bbox + 5 keypoints in frame |
+| **ArcFace (512d)** | Face Recognition | Generate 512-dim embedding for identity comparison |
+| **Landmark106** | Landmark Detection | 106-point refined face mesh, EAR eye metric |
+| **HeadPose (ResNet18)** | Head Pose Estimation | Pitch / Yaw / Roll three-axis rotation |
 
-> 模型首次运行自动从 PyPI 缓存下载（`~/.uniface/models/`），ONNX 文件约 70 MB。
+> Models auto-download from PyPI cache on first run (`~/.uniface/models/`), ~70 MB ONNX files total.
 
 ---
 
-## 四阶段专注工作流 / 4-Stage Focus Workflow
+## 4-Stage Focus Workflow
 
 ```
-[1. AUTH]    加载模型 → 读取本地绑定特征 → 等待用户进入摄像头
-[2. PERCEPT] 抽帧检测 → EAR 计算 + 头部姿态 + 定期身份验证
-[3. EVALUATE] 状态机裁决 → FOCUSED / WARNING / INTERRUPTED
-[4. REWARD]   积分计算 → milestone 里程碑奖励 → 推送至前端
-
 [1. AUTH]    Load models → Read stored face embedding → Wait for camera
 [2. PERCEPT] Sample frames → EAR + head pose + periodic face re-verification
 [3. EVALUATE] FSM decision → FOCUSED / WARNING / INTERRUPTED
@@ -89,16 +84,16 @@
 
 ---
 
-## 快速启动 / Quick Start
+## Quick Start
 
-### 环境要求 / Requirements
+### Requirements
 
 - Windows 10/11
 - Python 3.10 ~ 3.14
-- NVIDIA GPU（推荐 RTX 4060+，支持 CUDA 加速 / recommended RTX 4060+ for CUDA）
-- 摄像头（内置或 USB / built-in or USB camera）
+- NVIDIA GPU (recommended RTX 4060+ for CUDA acceleration)
+- Camera (built-in or USB)
 
-### 1. 创建虚拟环境 / Create venv
+### 1. Create venv
 
 ```bash
 cd e:/project/SSP/focus_island
@@ -107,61 +102,61 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-> 需要 GPU 加速时 / For GPU acceleration:
+> For GPU acceleration:
 > ```bash
 > pip install onnxruntime-gpu
 > ```
 
-### 2. 一键启动 / Start all services
+### 2. One-click start
 
-在项目根目录下双击或运行 / Double-click or run in project root:
+Double-click or run in project root:
 
 ```bash
 start.bat
 ```
 
-或 / Or:
+Or:
 
 ```powershell
 .\start.ps1
 ```
 
-脚本将依次启动 / Script starts these in order:
+The script starts in order:
 
-| 窗口 Window | 端口 Port | 说明 Description |
+| Window | Port | Description |
 |------|------|------|
-| FocusIsland-Backend | :8000 / :8765 | REST API + WebSocket 后端 |
-| FocusIsland-Room | :8766 | WebRTC 信令服务器 |
-| FocusIsland-Frontend | :5173 | Electron 桌面窗口 |
+| FocusIsland-Backend | :8000 / :8765 | REST API + WebSocket backend |
+| FocusIsland-Room | :8766 | WebRTC signaling server |
+| FocusIsland-Frontend | :5173 | Electron desktop window |
 
-### 3. 手动分步启动 / Manual step-by-step
+### 3. Manual step-by-step
 
 ```bash
-# 后端 / Backend
+# Backend
 python -m focus_island.main --mode server --ws-port 8765 --api-port 8000
 
-# 前端（在 frontend/ 目录）/ Frontend (in frontend/ dir)
+# Frontend (in frontend/ dir)
 cd frontend
 npm run electron:dev
 ```
 
 ---
 
-## API 与通信 / API & Communication
+## API & Communication
 
 ### REST API  (`http://127.0.0.1:8000`)
 
-| 方法 Method | 路径 Path | 说明 Description |
+| Method | Path | Description |
 |------|------|------|
-| `GET` | `/api/camera/frame` | 获取当前摄像头帧（Base64） |
-| `POST` | `/api/face/verify` | 验证当前人脸是否匹配已绑定用户 |
-| `POST` | `/api/face/bind` | 绑定当前人脸特征到指定账户 |
-| `POST` | `/api/session/start` | 开始一次专注会话 |
-| `GET` | `/api/system/info` | 获取后端状态、GPU 信息、版本 |
+| `GET` | `/api/camera/frame` | Get current camera frame (Base64) |
+| `POST` | `/api/face/verify` | Verify if current face matches bound user |
+| `POST` | `/api/face/bind` | Bind current face embedding to account |
+| `POST` | `/api/session/start` | Start a focus session |
+| `GET` | `/api/system/info` | Get backend status, GPU info, version |
 
 ### WebSocket  (`ws://127.0.0.1:8765`)
 
-客户端发送 / Client sends:
+Client sends:
 
 ```json
 { "type": "get_system_info" }
@@ -169,7 +164,7 @@ npm run electron:dev
 { "type": "stop_session" }
 ```
 
-服务端推送（示例）/ Server pushes (example):
+Server pushes (example):
 
 ```json
 { "type": "system_info", "backend_ready": true, "gpu_available": true }
@@ -179,77 +174,79 @@ npm run electron:dev
 
 ---
 
-## 项目结构 / Project Structure
+## Project Structure
 
 ```
-focus_island/                     ← 项目根目录 / Project root
-├── src/focus_island/             ← Python 后端 / Python backend
-│   ├── main.py                   ← 程序入口（三模式）/ Entry: camera/server/desktop
-│   ├── server.py                 ← FastAPI + WebSocket 服务端
-│   ├── room_server.py            ← WebRTC 信令服务器
-│   ├── pipeline.py               ← 帧处理流水线 / Frame processing pipeline
-│   ├── auth.py                   ← 人脸绑定/验证（ArcFace）/ Face binding & verification
-│   ├── model_manager.py          ← UniFace 模型加载与推理 / Model loading & inference
-│   ├── detector.py               ← RetinaFace / HeadPose 封装
-│   ├── ear.py                    ← EAR 眼部开合度计算 / Eye Aspect Ratio
-│   ├── focus_fsm.py              ← 专注状态机与积分计算 / Focus FSM & scoring
-│   ├── workflow.py               ← 四阶段工作流编排 / 4-stage workflow orchestration
-│   └── types.py                  ← Pydantic 数据类型定义
-├── frontend/                      ← Electron + React 前端
+focus_island/                     ← Project root
+├── src/focus_island/             ← Python backend
+│   ├── main.py                   ← Entry: camera/server/desktop
+│   ├── server.py                 ← FastAPI + WebSocket server
+│   ├── room_server.py            ← WebRTC signaling server
+│   ├── pipeline.py               ← Frame processing pipeline
+│   ├── auth.py                   ← Face binding & verification (ArcFace)
+│   ├── model_manager.py           ← UniFace model loading & inference
+│   ├── detector.py               ← RetinaFace / HeadPose wrapper
+│   ├── ear.py                    ← Eye Aspect Ratio calculation
+│   ├── focus_fsm.py              ← Focus FSM & scoring
+│   ├── workflow.py               ← 4-stage workflow orchestration
+│   └── types.py                  ← Pydantic data models
+├── frontend/                      ← Electron + React frontend
 │   ├── src/
-│   │   ├── App.tsx               ← 根组件 / Root component
-│   │   ├── main.tsx              ← React 入口
-│   │   ├── components/            ← UI 组件 / UI components
+│   │   ├── App.tsx               ← Root component
+│   │   ├── main.tsx              ← React entry
+│   │   ├── components/            ← UI components
 │   │   ├── hooks/
-│   │   │   ├── useBackend.tsx    ← WebSocket 连接管理
-│   │   │   └── useWebRTC.tsx     ← 协作房间 WebRTC
-│   │   └── pages/                ← 页面级组件 / Page components
+│   │   │   ├── useBackend.tsx    ← WebSocket connection management
+│   │   │   └── useWebRTC.tsx     ← Collaboration room WebRTC
+│   │   └── pages/                ← Page-level components
 │   ├── electron/
-│   │   ├── main.js               ← Electron 主进程
-│   │   └── preload.js            ← 预加载脚本（安全 IPC 桥接）
+│   │   ├── main.js               ← Electron main process
+│   │   └── preload.js            ← Preload script (secure IPC bridge)
 │   └── package.json
-├── config/                       ← YAML 配置文件
-├── models/                       ← ONNX 模型缓存（首次自动下载）
-├── user_faces/                   ← 用户人脸数据（勿提交）
-├── requirements.txt              ← Python 依赖（含 uniface）
-├── setup.py                      ← pip install -e . 入口
-├── start.bat                     ← Windows 一键启动
-├── start.ps1                     ← PowerShell 版
-├── setup_venv.bat                ← 初始化虚拟环境
-├── fix_venv.bat                  ← 修复损坏的 venv
-└── README.md
+├── config/                       ← YAML config files
+├── models/                       ← ONNX model cache (auto-downloaded)
+├── user_faces/                   ← User face data (do not commit)
+├── requirements.txt              ← Python deps (includes uniface)
+├── setup.py                      ← pip install -e . entry
+├── start.bat                     ← Windows one-click start
+├── start.ps1                     ← PowerShell version
+├── setup_venv.bat                ← Initialize venv
+├── fix_venv.bat                  ← Fix broken venv
+├── README.md                     ← Chinese version
+├── README_EN.md                  ← English version
+└── LICENSE                      ← MIT License
 ```
 
 ---
 
-## 硬件要求 / Hardware Requirements
+## Hardware Requirements
 
-| 组件 Component | 最低 Minimum | 推荐 Recommended |
+| Component | Minimum | Recommended |
 |------|------|------|
-| CPU | 4 核 | 6 核以上 |
-| 内存 RAM | 8 GB | 16 GB |
-| GPU | — | NVIDIA RTX 3060+（8 GB） |
-| 摄像头 Camera | 720p | 1080p |
+| CPU | 4 cores | 6+ cores |
+| RAM | 8 GB | 16 GB |
+| GPU | — | NVIDIA RTX 3060+ (8 GB) |
+| Camera | 720p | 1080p |
 
 ---
 
-## 常见问题 / FAQ
+## FAQ
 
 **Q: `ModuleNotFoundError: No module named 'uniface'`**
 
-> 虚拟环境中的 `uniface` 可编辑安装路径失效。运行 `fix_venv.bat` 修复，或删除 `.venv` 后重新 `pip install -r requirements.txt`。
+> The editable install path of `uniface` in the venv is broken. Run `fix_venv.bat` to fix, or delete `.venv` and re-run `pip install -r requirements.txt`.
 
-**Q: 后端无法启动，显示 `[ERROR] Python venv not found`**
+**Q: Backend fails to start, shows `[ERROR] Python venv not found`**
 
-> 先运行 `setup_venv.bat` 创建虚拟环境并安装依赖。
+> Run `setup_venv.bat` first to create the venv and install dependencies.
 
-**Q: 前端显示 `WebSocket connection failed`**
+**Q: Frontend shows `WebSocket connection failed`**
 
-> 确认后端窗口已正常打印 `WebSocket server started on ws://...`，且前端与后端在同一台机器上运行。
+> Confirm the backend window has printed `WebSocket server started on ws://...`, and frontend and backend are running on the same machine.
 
-**Q: CUDA 未检测到，使用 CPU 推理**
+**Q: CUDA not detected, using CPU inference**
 
-> 确认 NVIDIA 驱动已安装，并执行 `pip install onnxruntime-gpu` 替换 `onnxruntime`。
+> Confirm NVIDIA driver is installed, then run `pip install onnxruntime-gpu` to replace `onnxruntime`.
 
 ---
 

@@ -1,7 +1,7 @@
 """
-数据类型定义模块
+Data Type Definition Module
 
-定义系统中使用的数据结构，包括专注状态、会话数据、帧结果等。
+Defines data structures used in the system, including focus states, session data, frame results, etc.
 
 Author: SSP Team
 """
@@ -16,29 +16,29 @@ import json
 
 
 class FocusState(Enum):
-    """专注状态枚举"""
-    IDLE = "idle"           # 无脸或未开始
-    FOCUSED = "focused"     # 专注中
-    WARNING = "warning"     # 偏离或闭眼警告中
-    INTERRUPTED = "interrupted"  # 中断
-    PAUSED = "paused"       # 暂停
+    """Focus state enum"""
+    IDLE = "idle"           # No face or not started
+    FOCUSED = "focused"     # Focusing
+    WARNING = "warning"     # Deviation or eye closed warning
+    INTERRUPTED = "interrupted"  # Interrupted
+    PAUSED = "paused"       # Paused
 
 
 class WarningReason(Enum):
-    """警告原因枚举"""
+    """Warning reason enum"""
     NONE = "none"
-    HEAD_AWAY = "head_away"      # 头部偏离
-    EYES_CLOSED = "eyes_closed"  # 眼睛闭上
-    NO_FACE = "no_face"          # 未检测到人脸
+    HEAD_AWAY = "head_away"      # Head away
+    EYES_CLOSED = "eyes_closed"  # Eyes closed
+    NO_FACE = "no_face"          # No face detected
 
 
 @dataclass
 class HeadPoseData:
-    """头部姿态数据"""
-    pitch: float = 0.0      # 俯仰角 (度)
-    yaw: float = 0.0        # 偏航角 (度)
-    roll: float = 0.0       # 翻滚角 (度)
-    is_valid: bool = False  # 是否在有效范围内
+    """Head pose data"""
+    pitch: float = 0.0      # Pitch angle (degrees)
+    yaw: float = 0.0        # Yaw angle (degrees)
+    roll: float = 0.0       # Roll angle (degrees)
+    is_valid: bool = False  # Is within valid range
 
     def to_dict(self) -> dict:
         return {
@@ -51,12 +51,12 @@ class HeadPoseData:
 
 @dataclass
 class EyeData:
-    """眼部状态数据"""
-    ear_left: float = 0.0       # 左眼 EAR 值
-    ear_right: float = 0.0      # 右眼 EAR 值
-    ear_avg: float = 0.0        # 平均 EAR 值
-    is_open: bool = True        # 是否睁开
-    consecutive_closed: int = 0  # 连续闭眼帧数
+    """Eye state data"""
+    ear_left: float = 0.0       # Left eye EAR value
+    ear_right: float = 0.0      # Right eye EAR value
+    ear_avg: float = 0.0        # Average EAR value
+    is_open: bool = True        # Is open
+    consecutive_closed: int = 0  # Consecutive closed frames
 
     def to_dict(self) -> dict:
         return {
@@ -70,25 +70,25 @@ class EyeData:
 
 @dataclass
 class FrameResult:
-    """单帧处理结果"""
-    timestamp: float = 0.0          # 时间戳 (秒)
-    frame_id: int = 0               # 帧 ID
-    has_face: bool = False           # 是否检测到人脸
-    face_confidence: float = 0.0    # 人脸置信度
+    """Single frame processing result"""
+    timestamp: float = 0.0          # Timestamp (seconds)
+    frame_id: int = 0               # Frame ID
+    has_face: bool = False           # Face detected
+    face_confidence: float = 0.0    # Face confidence
     
-    # 头部姿态
+    # Head pose
     head_pose: HeadPoseData = field(default_factory=HeadPoseData)
     
-    # 眼部状态
+    # Eye state
     eye_data: EyeData = field(default_factory=EyeData)
     
-    # 专注状态
+    # Focus state
     focus_state: FocusState = FocusState.IDLE
     warning_reason: WarningReason = WarningReason.NONE
     
-    # 性能数据
-    detection_time_ms: float = 0.0   # 检测耗时 (毫秒)
-    total_time_ms: float = 0.0      # 总处理耗时 (毫秒)
+    # Performance data
+    detection_time_ms: float = 0.0   # Detection time (ms)
+    total_time_ms: float = 0.0      # Total processing time (ms)
 
     def to_dict(self) -> dict:
         return {
@@ -110,7 +110,7 @@ class FrameResult:
 
 @dataclass
 class Milestone:
-    """里程碑配置"""
+    """Milestone configuration"""
     duration_minutes: int
     bonus_points: int
     reached: bool = False
@@ -127,27 +127,27 @@ class Milestone:
 
 @dataclass
 class SessionStats:
-    """会话统计数据"""
-    # 时间统计
-    session_start_time: float = 0.0          # 会话开始时间戳
-    total_focus_time: float = 0.0           # 总专注时间 (秒)
-    total_warning_time: float = 0.0          # 总警告时间 (秒)
-    last_focus_start: float = 0.0            # 最近一次专注开始时间
-    is_in_focus: bool = False                # 当前是否在专注状态
+    """Session statistics"""
+    # Time statistics
+    session_start_time: float = 0.0          # Session start timestamp
+    total_focus_time: float = 0.0           # Total focus time (seconds)
+    total_warning_time: float = 0.0          # Total warning time (seconds)
+    last_focus_start: float = 0.0            # Last focus start time
+    is_in_focus: bool = False                # Currently in focus state
     
-    # 计数统计
-    interruption_count: int = 0              # 中断次数
-    warning_count: int = 0                   # 警告次数
+    # Count statistics
+    interruption_count: int = 0              # Interruption count
+    warning_count: int = 0                   # Warning count
     
-    # 积分统计
-    current_streak_minutes: float = 0.0      # 当前连续专注时长 (分钟)
-    total_points: int = 0                    # 总积分
-    bonus_points: int = 0                    # 里程碑奖励积分
+    # Points statistics
+    current_streak_minutes: float = 0.0      # Current consecutive focus duration (minutes)
+    total_points: int = 0                    # Total points
+    bonus_points: int = 0                    # Milestone bonus points
     milestones: list[Milestone] = field(default_factory=list)
     
-    # 实时状态
+    # Real-time state
     current_state: FocusState = FocusState.IDLE
-    grace_period_remaining: float = 0.0      # 剩余宽容时间
+    grace_period_remaining: float = 0.0      # Remaining grace time
     
     def to_dict(self) -> dict:
         return {
@@ -166,9 +166,9 @@ class SessionStats:
 
 @dataclass
 class SessionData:
-    """完整会话数据"""
-    session_id: str = ""                      # 会话 ID
-    user_id: Optional[str] = None             # 用户 ID
+    """Complete session data"""
+    session_id: str = ""                      # Session ID
+    user_id: Optional[str] = None             # User ID
     start_time: datetime = field(default_factory=datetime.now)
     end_time: Optional[datetime] = None
     is_active: bool = True
@@ -193,10 +193,10 @@ class SessionData:
 
 @dataclass
 class FocusRuleResult:
-    """专注规则检查结果"""
-    pose_valid: bool = True           # 姿态是否有效
-    eyes_valid: bool = True           # 眼部状态是否有效
-    overall_valid: bool = True        # 整体是否有效
+    """Focus rule check result"""
+    pose_valid: bool = True           # Pose valid
+    eyes_valid: bool = True           # Eye state valid
+    overall_valid: bool = True        # Overall valid
     warning_reason: WarningReason = WarningReason.NONE
     details: dict = field(default_factory=dict)
     
@@ -212,30 +212,30 @@ class FocusRuleResult:
 
 @dataclass
 class PipelineConfig:
-    """流水线配置"""
-    # 头部姿态阈值
+    """Pipeline configuration"""
+    # Head pose thresholds
     pitch_threshold: float = 20.0
     yaw_threshold: float = 25.0
     roll_threshold: float = 30.0
     
-    # EAR 阈值
+    # EAR thresholds
     ear_threshold: float = 0.18
     consecutive_eye_closed_threshold: int = 2
     
-    # 宽容时间
+    # Grace period
     grace_period_seconds: float = 5.0
     
-    # 计分
+    # Scoring
     points_per_minute: int = 10
     daily_limit: int = 500
     
-    # 眼部关键点索引 (106点 landmarks)
+    # Eye landmark indices (106-point landmarks)
     left_eye_indices: list[int] = field(default_factory=lambda: [63, 64, 65, 66, 67, 68])
     right_eye_indices: list[int] = field(default_factory=lambda: [72, 73, 74, 75, 76, 77])
     
     @classmethod
     def from_dict(cls, config: dict) -> "PipelineConfig":
-        """从字典创建配置"""
+        """Create config from dict"""
         hp = config.get("headpose", {})
         ear = config.get("ear", {})
         fsm = config.get("focus_fsm", {})
@@ -265,7 +265,7 @@ class PipelineConfig:
 
 @dataclass
 class SystemInfo:
-    """系统信息"""
+    """System info"""
     gpu_available: bool = False
     gpu_name: str = ""
     onnx_providers: list[str] = field(default_factory=list)

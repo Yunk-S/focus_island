@@ -1,7 +1,7 @@
 """
-视频流处理管道模块
+Video Stream Processing Pipeline Module
 
-整合所有检测模块，处理视频流并输出结果。
+Integrates all detection modules to process video streams and output results.
 
 Author: SSP Team
 """
@@ -36,10 +36,10 @@ logger = logging.getLogger(__name__)
 
 
 class FocusPipeline:
-    """专注检测流水线
+    """Focus Detection Pipeline
     
-    整合人脸检测、头部姿态估计、EAR 计算和状态机，
-    提供完整的视频流处理能力。
+    Integrates face detection, head pose estimation, EAR calculation and state machine,
+    providing complete video stream processing capabilities.
     """
     
     def __init__(
@@ -50,41 +50,41 @@ class FocusPipeline:
         enable_visualization: bool = True
     ):
         """
-        初始化流水线
+        Initialize pipeline
         
         Args:
-            config: 流水线配置
-            use_cuda: 是否使用 CUDA
-            detector_type: 检测器类型
-            enable_visualization: 是否启用可视化
+            config: Pipeline configuration
+            use_cuda: Whether to use CUDA
+            detector_type: Detector type
+            enable_visualization: Whether to enable visualization
         """
         self.config = config or PipelineConfig()
         self.use_cuda = use_cuda
         self.detector_type = detector_type
         self.enable_visualization = enable_visualization
         
-        # 帧计数
+        # Frame counter
         self._frame_id = 0
         self._start_time = time.time()
         self._last_frame_time = time.time()
         self._fps = 0.0
         
-        # 回调函数
+        # Callback functions
         self._on_result_callback: Optional[Callable] = None
         self._on_state_change_callback: Optional[Callable] = None
         self._on_milestone_callback: Optional[Callable] = None
         
-        # WebSocket 服务器
+        # WebSocket server
         self._ws_server: Optional[WebSocketServer] = None
         
-        # 初始化组件
+        # Initialize components
         self._init_components()
         
         logger.info(f"FocusPipeline initialized: CUDA={use_cuda}, detector={detector_type}")
     
     def _init_components(self) -> None:
-        """初始化所有组件"""
-        # 1. 核心检测器
+        """Initialize all components"""
+        # 1. Core detector
         logger.info("Initializing core detector...")
         self.detector = CoreDetector(
             config=self.config,
@@ -92,15 +92,15 @@ class FocusPipeline:
             detector_type=self.detector_type
         )
         
-        # 2. EAR 计算器
+        # 2. EAR calculator
         logger.info("Initializing EAR calculator...")
         self.ear_calculator = EARCalculator(self.config)
         
-        # 3. 会话管理器
+        # 3. Session manager
         logger.info("Initializing session manager...")
         self.session_manager = SessionManager(self.config)
         
-        # 注册状态变化回调
+        # Register state change callbacks
         self.session_manager.register_callback(
             "state_change",
             self._on_state_change
@@ -111,62 +111,62 @@ class FocusPipeline:
         )
     
     def _on_state_change(self, old_state: FocusState, new_state: FocusState) -> None:
-        """状态变化回调"""
+        """State change callback"""
         logger.info(f"State changed: {old_state.value} -> {new_state.value}")
         
         if self._on_state_change_callback:
             self._on_state_change_callback(old_state, new_state)
     
     def _on_milestone(self, milestone: dict) -> None:
-        """里程碑回调"""
+        """Milestone callback"""
         logger.info(f"Milestone reached: {milestone}")
         
         if self._on_milestone_callback:
             self._on_milestone_callback(milestone)
     
     def set_on_result(self, callback: Callable) -> None:
-        """设置结果回调"""
+        """Set result callback"""
         self._on_result_callback = callback
     
     def set_on_state_change(self, callback: Callable) -> None:
-        """设置状态变化回调"""
+        """Set state change callback"""
         self._on_state_change_callback = callback
     
     def set_on_milestone(self, callback: Callable) -> None:
-        """设置里程碑回调"""
+        """Set milestone callback"""
         self._on_milestone_callback = callback
     
     def get_system_info(self) -> SystemInfo:
-        """获取系统信息"""
+        """Get system info"""
         return self.detector.get_system_info()
     
     def warmup(self) -> None:
-        """预热模型"""
+        """Warmup models"""
         logger.info("Warming up models...")
         self.detector.warmup()
         logger.info("Warmup complete")
     
     def process_frame(self, image: np.ndarray) -> dict:
         """
-        处理单帧
+        Process single frame
         
         Args:
-            image: 输入图像 (BGR 格式)
+            image: Input image (BGR format)
             
         Returns:
-            处理结果字典
+            Processing result dict
         """
         current_time = time.time()
         delta_time = current_time - self._last_frame_time
         self._last_frame_time = current_time
         
-        # 更新 FPS
+        # Update FPS
         if delta_time > 0:
             self._fps = 1.0 / delta_time
         
         frame_start = time.time()
         
-        # 1. 人脸检测
+        # 1. Face detection
         detection = self.detector.detect_face(image)
         
         has_face = detection is not None
@@ -175,18 +175,18 @@ class FocusPipeline:
         consecutive_closed = 0
         
         if has_face:
-            # 2. 头部姿态
+            # 2. Head pose
             head_pose_data = detection["head_pose"]
             pitch = head_pose_data.pitch
             yaw = head_pose_data.yaw
             roll = head_pose_data.roll
             
-            # 3. EAR 计算
+            # 3. EAR calculation
             eye_data = self.ear_calculator.get_eye_data(detection["landmarks_106"])
             ear_avg = eye_data.ear_avg
             consecutive_closed = eye_data.consecutive_closed
         
-        # 4. 状态机处理
+        # 4. State machine processing
         result = self.session_manager.process_frame(
             has_face=has_face,
             pitch=pitch,
@@ -199,10 +199,10 @@ class FocusPipeline:
             delta_time=delta_time
         )
         
-        # 计算总处理时间
+        # Calculate total processing time
         total_time = (time.time() - frame_start) * 1000
         
-        # 构建完整结果
+        # Build complete result
         frame_result = {
             "frame_id": self._frame_id,
             "timestamp": current_time,
@@ -222,11 +222,11 @@ class FocusPipeline:
             **result
         }
         
-        # 触发回调
+        # Trigger callback
         if self._on_result_callback:
             self._on_result_callback(frame_result)
         
-        # WebSocket 广播
+        # WebSocket broadcast
         if self._ws_server and self._ws_server.is_running:
             asyncio_run(self._ws_server.broadcast_frame_result(frame_result))
         
@@ -235,7 +235,7 @@ class FocusPipeline:
         return frame_result
     
     async def process_frame_async(self, image: np.ndarray) -> dict:
-        """异步处理单帧"""
+        """Process single frame asynchronously"""
         return self.process_frame(image)
     
     def process_camera(
@@ -246,13 +246,13 @@ class FocusPipeline:
         window_name: str = "SSP - Smart Study Spot"
     ) -> None:
         """
-        处理摄像头流
+        Process camera stream
         
         Args:
-            camera_id: 摄像头 ID
-            flip_horizontal: 是否水平翻转
-            max_frames: 最大帧数 (0 表示无限)
-            window_name: 显示窗口名称
+            camera_id: Camera ID
+            flip_horizontal: Whether to flip horizontally
+            max_frames: Max frames (0 means unlimited)
+            window_name: Display window name
         """
         cap = cv2.VideoCapture(camera_id)
         
@@ -269,14 +269,14 @@ class FocusPipeline:
                 if not ret:
                     break
                 
-                # 翻转
+                # Flip
                 if flip_horizontal:
                     frame = cv2.flip(frame, 1)
                 
-                # 处理帧
+                # Process frame
                 result = self.process_frame(frame)
                 
-                # 可视化
+                # Visualization
                 if self.enable_visualization:
                     vis_frame = self._visualize_frame(frame, result)
                     cv2.imshow(window_name, vis_frame)
@@ -306,24 +306,24 @@ class FocusPipeline:
         window_name: str = "SSP - Smart Study Spot"
     ) -> dict:
         """
-        处理视频文件
+        Process video file
         
         Args:
-            video_path: 视频文件路径
-            output_path: 输出视频路径 (可选)
-            flip_horizontal: 是否水平翻转
-            max_frames: 最大帧数
-            window_name: 显示窗口名称
+            video_path: Video file path
+            output_path: Output video path (optional)
+            flip_horizontal: Whether to flip horizontally
+            max_frames: Max frames
+            window_name: Display window name
             
         Returns:
-            处理统计
+            Processing statistics
         """
         cap = cv2.VideoCapture(video_path)
         
         if not cap.isOpened():
             raise RuntimeError(f"Cannot open video: {video_path}")
         
-        # 获取视频信息
+        # Get video info
         fps = cap.get(cv2.CAP_PROP_FPS)
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
@@ -331,7 +331,7 @@ class FocusPipeline:
         
         logger.info(f"Video info: {width}x{height}, {fps} FPS, {total_frames} frames")
         
-        # 创建视频写入器
+        # Create video writer
         writer = None
         if output_path:
             fourcc = cv2.VideoWriter_fourcc(*'mp4v')
@@ -346,14 +346,14 @@ class FocusPipeline:
                 if not ret:
                     break
                 
-                # 翻转
+                # Flip
                 if flip_horizontal:
                     frame = cv2.flip(frame, 1)
                 
-                # 处理帧
+                # Process frame
                 result = self.process_frame(frame)
                 
-                # 可视化
+                # Visualization
                 if self.enable_visualization or writer:
                     vis_frame = self._visualize_frame(frame, result)
                     
@@ -396,11 +396,11 @@ class FocusPipeline:
         return stats
     
     def _visualize_frame(self, frame: np.ndarray, result: dict) -> np.ndarray:
-        """可视化帧"""
+        """Visualize frame"""
         vis = frame.copy()
         h, w = frame.shape[:2]
         
-        # 状态颜色
+        # State colors
         state = result.get("state", "idle")
         state_colors = {
             "idle": (128, 128, 128),
@@ -410,11 +410,11 @@ class FocusPipeline:
         }
         color = state_colors.get(state, (255, 255, 255))
         
-        # 绘制状态信息
+        # Draw state info
         info_y = 30
         line_height = 25
         
-        # 状态
+        # State
         cv2.putText(
             vis,
             f"State: {state.upper()}",
@@ -438,7 +438,7 @@ class FocusPipeline:
         )
         info_y += line_height
         
-        # 头部姿态
+        # Head pose
         hp = result.get("head_pose", {})
         cv2.putText(
             vis,
@@ -464,7 +464,7 @@ class FocusPipeline:
         )
         info_y += line_height
         
-        # 积分
+        # Points
         stats = result.get("stats", {})
         cv2.putText(
             vis,
@@ -477,7 +477,7 @@ class FocusPipeline:
         )
         info_y += line_height
         
-        # 宽容时间
+        # Grace period
         grace = result.get("grace_remaining", 0)
         if grace > 0:
             cv2.putText(
@@ -490,23 +490,23 @@ class FocusPipeline:
                 1
             )
         
-        # 绘制边框 (指示状态)
+        # Draw border (indicating state)
         border_thickness = 3 if state == "focused" else 1
         cv2.rectangle(vis, (0, 0), (w - 1, h - 1), color, border_thickness)
         
         return vis
     
     def get_session_summary(self) -> dict:
-        """获取会话摘要"""
+        """Get session summary"""
         return self.session_manager.get_session_summary()
     
     def reset_session(self) -> None:
-        """重置会话"""
+        """Reset session"""
         self.session_manager.reset_session()
         self._frame_id = 0
     
     def get_config(self) -> dict:
-        """获取配置"""
+        """Get configuration"""
         return {
             "pitch_threshold": self.config.pitch_threshold,
             "yaw_threshold": self.config.yaw_threshold,
@@ -518,7 +518,7 @@ class FocusPipeline:
         }
     
     def update_config(self, config: dict) -> None:
-        """更新配置"""
+        """Update configuration"""
         if "pitch_threshold" in config:
             self.config.pitch_threshold = config["pitch_threshold"]
         if "yaw_threshold" in config:
@@ -538,7 +538,7 @@ class FocusPipeline:
         port: int = 8765,
         max_connections: int = 10
     ) -> WebSocketServer:
-        """启动 WebSocket 服务器"""
+        """Start WebSocket server"""
         if self._ws_server and self._ws_server.is_running:
             logger.warning("WebSocket server already running")
             return self._ws_server
@@ -549,21 +549,21 @@ class FocusPipeline:
             max_connections=max_connections
         )
         
-        # 设置帧结果广播
+        # Set frame result broadcast
         async def on_connect(client, message):
-            # 连接时发送当前会话摘要
+            # Send current session summary on connect
             return WSMessageType.SESSION_SUMMARY, self.get_session_summary()
         
         self._ws_server.register_handler(WSMessageType.GET_SUMMARY, on_connect)
         
-        # 启动服务器
+        # Start server
         import asyncio
         asyncio.run(self._ws_server.start())
         
         return self._ws_server
     
     def stop_websocket_server(self) -> None:
-        """停止 WebSocket 服务器"""
+        """Stop WebSocket server"""
         if self._ws_server:
             import asyncio
             asyncio.run(self._ws_server.stop())
@@ -571,29 +571,29 @@ class FocusPipeline:
 
 
 def asyncio_run(coro):
-    """运行异步协程"""
+    """Run async coroutine"""
     import asyncio
     try:
         loop = asyncio.get_running_loop()
-        # 如果已经在事件循环中，创建任务
+        # If already in event loop, create task
         future = asyncio.ensure_future(coro)
         return future
     except RuntimeError:
-        # 没有运行中的事件循环
+        # No running event loop
         return asyncio.run(coro)
 
 
 class VideoStreamServer:
-    """视频流服务器 - 提供 MJPEG 视频流"""
+    """Video Stream Server - Provides MJPEG video stream"""
     
     def __init__(self, pipeline: FocusPipeline, host: str = "0.0.0.0", port: int = 8554):
         """
-        初始化视频流服务器
+        Initialize video stream server
         
         Args:
-            pipeline: 专注检测流水线
-            host: 监听地址
-            port: 监听端口
+            pipeline: Focus detection pipeline
+            host: Listen address
+            port: Listen port
         """
         self.pipeline = pipeline
         self.host = host
@@ -602,12 +602,12 @@ class VideoStreamServer:
         self._running = False
     
     def update_frame(self, frame: np.ndarray) -> None:
-        """更新当前帧"""
+        """Update current frame"""
         result = self.pipeline.process_frame(frame)
         self._frame = self.pipeline._visualize_frame(frame, result)
     
     def generate_frames(self):
-        """生成帧用于 MJPEG 流"""
+        """Generate frames for MJPEG stream"""
         while self._running:
             if self._frame is not None:
                 ret, buffer = cv2.imencode('.jpg', self._frame)
@@ -618,14 +618,14 @@ class VideoStreamServer:
             time.sleep(0.03)  # ~30 FPS
     
     async def start(self) -> None:
-        """启动服务器"""
+        """Start server"""
         self._running = True
         logger.info(f"Video stream server starting on {self.host}:{self.port}")
-        # Note: 需要结合 FastAPI 或其他 HTTP 服务器使用
+        # Note: Needs to be used with FastAPI or other HTTP server
         # from fastapi.responses import StreamingResponse
         # return StreamingResponse(self.generate_frames(), media_type='multipart/x-mixed-replace; boundary=frame')
     
     def stop(self) -> None:
-        """停止服务器"""
+        """Stop server"""
         self._running = False
         logger.info("Video stream server stopped")

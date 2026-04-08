@@ -1,7 +1,7 @@
 """
-EAR (Eye Aspect Ratio) 眼部状态检测模块
+EAR (Eye Aspect Ratio) Eye State Detection Module
 
-使用 106 点面部关键点计算眼睛纵横比，判断眼睛是否睁开。
+Uses 106-point facial landmarks to calculate eye aspect ratio and determine if eyes are open.
 
 Author: SSP Team
 """
@@ -20,21 +20,21 @@ logger = logging.getLogger(__name__)
 
 
 class EYEIndexConfig:
-    """眼部关键点索引配置
+    """Eye landmark indices configuration
     
-    基于 UniFace 的 106 点 landmarks 索引定义：
-    - 左眼: indices[63-71] = 9个点，但通常使用6个特征点
-    - 右眼: indices[72-80] = 9个点，但通常使用6个特征点
+    Based on UniFace 106-point landmarks indices:
+    - Left eye: indices[63-71] = 9 points, but typically use 6 feature points
+    - Right eye: indices[72-80] = 9 points, but typically use 6 feature points
     
-    EAR 计算使用 6 个关键点:
-    - 左眼: [35, 36, 37, 38, 39, 40] 或使用 [63, 64, 65, 66, 67, 68]
-    - 右眼: [41, 42, 43, 44, 45, 46] 或使用 [72, 73, 74, 75, 76, 77]
+    EAR calculation uses 6 landmarks:
+    - Left eye: [35, 36, 37, 38, 39, 40] or [63, 64, 65, 66, 67, 68]
+    - Right eye: [41, 42, 43, 44, 45, 46] or [72, 73, 74, 75, 76, 77]
     
-    标准 6 点配置 (推荐):
-    - 左眼外角 -> 眼角1 -> 瞳孔上 -> 瞳孔下 -> 眼角2 -> 左眼外角
-    - 点位: P1, P2, P3, P4, P5, P6
+    Standard 6-point configuration (recommended):
+    - Left eye outer corner -> corner1 -> upper pupil -> lower pupil -> corner2 -> left outer corner
+    - Points: P1, P2, P3, P4, P5, P6
     
-    示意图:
+    Diagram:
          P2---P3
         /     /
     P1 -       - P6
@@ -42,27 +42,27 @@ class EYEIndexConfig:
          P5---P4
     """
     
-    # 默认的 6 点索引 (使用 UniFace 106点的连续区间)
-    # 左眼: 63, 64, 65, 66, 67, 68 (连续的6个点)
-    # 右眼: 72, 73, 74, 75, 76, 77 (连续的6个点)
+    # Default 6-point indices (using UniFace 106-point continuous range)
+    # Left eye: 63, 64, 65, 66, 67, 68 (6 consecutive points)
+    # Right eye: 72, 73, 74, 75, 76, 77 (6 consecutive points)
     DEFAULT_LEFT_EYE = [63, 64, 65, 66, 67, 68]
     DEFAULT_RIGHT_EYE = [72, 73, 74, 75, 76, 77]
     
     # Alternative 6-point configurations for different landmark sets
-    # 基于 dlib 68 点的标准配置 (仅供参考)
-    DLIB_LEFT_EYE = [36, 37, 38, 39, 40, 41]  # 假设使用68点
-    DLIB_RIGHT_EYE = [42, 43, 44, 45, 46, 47]  # 假设使用68点
+    # Based on dlib 68-point standard configuration (for reference only)
+    DLIB_LEFT_EYE = [36, 37, 38, 39, 40, 41]  # Assuming using 68 points
+    DLIB_RIGHT_EYE = [42, 43, 44, 45, 46, 47]  # Assuming using 68 points
 
 
 class EARCalculator:
-    """EAR (Eye Aspect Ratio) 计算器
+    """EAR (Eye Aspect Ratio) Calculator
     
     EAR = (|p2-p6| + |p3-p5|) / (2 * |p1-p4|)
     
-    其中:
-    - p1, p4 是眼睛的左右角点
-    - p2, p3 是眼睛的上部点
-    - p5, p6 是眼睛的下部点
+    Where:
+    - p1, p4 are the left and right corner points of the eye
+    - p2, p3 are the upper points of the eye
+    - p5, p6 are the lower points of the eye
     """
     
     def __init__(
@@ -72,21 +72,21 @@ class EARCalculator:
         right_eye_indices: Optional[list[int]] = None
     ):
         """
-        初始化 EAR 计算器
+        Initialize EAR calculator
         
         Args:
-            config: 流水线配置
-            left_eye_indices: 左眼 6 个关键点索引
-            right_eye_indices: 右眼 6 个关键点索引
+            config: Pipeline configuration
+            left_eye_indices: Left eye 6-point indices
+            right_eye_indices: Right eye 6-point indices
         """
         self.ear_threshold = config.ear_threshold
         self.consecutive_threshold = config.consecutive_eye_closed_threshold
         
-        # 眼部关键点索引
+        # Eye landmark indices
         self.left_eye_indices = left_eye_indices or config.left_eye_indices or EYEIndexConfig.DEFAULT_LEFT_EYE
         self.right_eye_indices = right_eye_indices or config.right_eye_indices or EYEIndexConfig.DEFAULT_RIGHT_EYE
         
-        # 连续闭眼计数
+        # Consecutive eye closed frame counter
         self._consecutive_closed_frames = 0
         
         logger.info(
@@ -98,29 +98,29 @@ class EARCalculator:
     
     def calculate_ear(self, eye_points: np.ndarray) -> float:
         """
-        计算单只眼的 EAR 值
+        Calculate EAR value for single eye
         
         Args:
-            eye_points: 6 个关键点坐标，形状 (6, 2)，顺序为:
-                [p1, p2, p3, p4, p5, p6] - 按顺时针或逆时针排列
+            eye_points: 6 landmark coordinates, shape (6, 2), order:
+                [p1, p2, p3, p4, p5, p6] - clockwise or counterclockwise
                 
         Returns:
-            EAR 值
+            EAR value
         """
         if eye_points.shape != (6, 2):
             logger.warning(f"Invalid eye points shape: {eye_points.shape}, expected (6, 2)")
             return 0.0
         
-        # 计算垂直距离
-        # |p2 - p6| 和 |p3 - p5|
+        # Calculate vertical distances
+        # |p2 - p6| and |p3 - p5|
         v1 = np.linalg.norm(eye_points[1] - eye_points[5])
         v2 = np.linalg.norm(eye_points[2] - eye_points[4])
         
-        # 计算水平距离
+        # Calculate horizontal distance
         # |p1 - p4|
         h = np.linalg.norm(eye_points[0] - eye_points[3])
         
-        # 避免除零
+        # Avoid division by zero
         if h < 1e-6:
             return 0.0
         
@@ -130,19 +130,19 @@ class EARCalculator:
     
     def extract_eye_points(self, landmarks_106: np.ndarray, eye_indices: list[int]) -> np.ndarray:
         """
-        从 106 点 landmarks 中提取眼睛关键点
+        Extract eye landmarks from 106-point landmarks
         
         Args:
-            landmarks_106: 106 点 landmarks，形状 (106, 2)
-            eye_indices: 6 个关键点索引列表
+            landmarks_106: 106-point landmarks, shape (106, 2)
+            eye_indices: List of 6 landmark indices
             
         Returns:
-            6 个关键点坐标，形状 (6, 2)
+            6 landmark coordinates, shape (6, 2)
         """
         if len(eye_indices) != 6:
             raise ValueError(f"Expected 6 eye indices, got {len(eye_indices)}")
         
-        # 确保索引在有效范围内
+        # Ensure indices are within valid range
         for idx in eye_indices:
             if idx < 0 or idx >= len(landmarks_106):
                 raise ValueError(f"Invalid eye index {idx}, landmarks has {len(landmarks_106)} points")
@@ -156,38 +156,38 @@ class EARCalculator:
         reset_counter: bool = False
     ) -> tuple[float, float, bool]:
         """
-        计算双眼状态
+        Calculate both eyes state
         
         Args:
-            landmarks_106: 106 点 landmarks
-            reset_counter: 是否重置连续闭眼计数器
+            landmarks_106: 106-point landmarks
+            reset_counter: Whether to reset consecutive closed counter
             
         Returns:
             (ear_left, ear_right, is_open)
-            - ear_left: 左眼 EAR 值
-            - ear_right: 右眼 EAR 值
-            - is_open: 双眼是否睁开
+            - ear_left: Left eye EAR value
+            - ear_right: Right eye EAR value
+            - is_open: Whether both eyes are open
         """
         if reset_counter:
             self._consecutive_closed_frames = 0
         
         try:
-            # 提取双眼关键点
+            # Extract both eyes landmarks
             left_eye = self.extract_eye_points(landmarks_106, self.left_eye_indices)
             right_eye = self.extract_eye_points(landmarks_106, self.right_eye_indices)
             
-            # 计算 EAR
+            # Calculate EAR
             ear_left = self.calculate_ear(left_eye)
             ear_right = self.calculate_ear(right_eye)
             
-            # 判断眼睛是否睁开
-            # 使用平均值或较小值 (更严格的判断)
+            # Determine if eyes are open
+            # Use average or minimum value (stricter judgment)
             ear_avg = (ear_left + ear_right) / 2
             ear_min = min(ear_left, ear_right)
             
             is_open = ear_avg >= self.ear_threshold
             
-            # 更新连续闭眼计数
+            # Update consecutive closed counter
             if not is_open:
                 self._consecutive_closed_frames += 1
             else:
@@ -201,13 +201,13 @@ class EARCalculator:
     
     def get_eye_data(self, landmarks_106: np.ndarray) -> EyeData:
         """
-        获取完整的眼部状态数据
+        Get complete eye state data
         
         Args:
-            landmarks_106: 106 点 landmarks
+            landmarks_106: 106-point landmarks
             
         Returns:
-            EyeData 对象
+            EyeData object
         """
         ear_left, ear_right, is_open = self.calculate_eye_state(landmarks_106)
         ear_avg = (ear_left + ear_right) / 2
@@ -222,15 +222,15 @@ class EARCalculator:
     
     def is_eyes_closed_sustained(self) -> bool:
         """
-        检查眼睛是否持续闭合超过阈值
+        Check if eyes are continuously closed beyond threshold
         
         Returns:
-            True 如果连续闭眼帧数超过阈值
+            True if consecutive closed frames exceed threshold
         """
         return self._consecutive_closed_frames >= self.consecutive_threshold
     
     def reset(self) -> None:
-        """重置状态"""
+        """Reset state"""
         self._consecutive_closed_frames = 0
 
 
@@ -243,43 +243,43 @@ def visualize_eye_points(
     radius: int = 2
 ) -> np.ndarray:
     """
-    在图像上可视化眼部关键点
+    Visualize eye landmarks on image
     
     Args:
-        image: 输入图像
-        landmarks_106: 106 点 landmarks
-        left_eye_indices: 左眼索引
-        right_eye_indices: 右眼索引
-        color: 绘制颜色
-        radius: 点的半径
+        image: Input image
+        landmarks_106: 106-point landmarks
+        left_eye_indices: Left eye indices
+        right_eye_indices: Right eye indices
+        color: Drawing color
+        radius: Point radius
         
     Returns:
-        绘制了关键点的图像
+        Image with landmarks drawn
     """
     import cv2
     
     vis_image = image.copy()
     
-    # 绘制左眼
+    # Draw left eye
     for idx in left_eye_indices:
         x, y = map(int, landmarks_106[idx])
         cv2.circle(vis_image, (x, y), radius, color, -1)
     
-    # 绘制右眼
+    # Draw right eye
     for idx in right_eye_indices:
         x, y = map(int, landmarks_106[idx])
         cv2.circle(vis_image, (x, y), radius, color, -1)
     
-    # 连接双眼的点
+    # Connect both eyes' points
     left_eye_pts = landmarks_106[left_eye_indices].astype(int)
     right_eye_pts = landmarks_106[right_eye_indices].astype(int)
     
-    # 绘制左眼轮廓
+    # Draw left eye contour
     for i in range(len(left_eye_pts) - 1):
         cv2.line(vis_image, tuple(left_eye_pts[i]), tuple(left_eye_pts[i + 1]), color, 1)
     cv2.line(vis_image, tuple(left_eye_pts[-1]), tuple(left_eye_pts[0]), color, 1)
     
-    # 绘制右眼轮廓
+    # Draw right eye contour
     for i in range(len(right_eye_pts) - 1):
         cv2.line(vis_image, tuple(right_eye_pts[i]), tuple(right_eye_pts[i + 1]), color, 1)
     cv2.line(vis_image, tuple(right_eye_pts[-1]), tuple(right_eye_pts[0]), color, 1)

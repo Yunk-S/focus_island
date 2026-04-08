@@ -91,7 +91,7 @@ function Dashboard() {
     }
   }, [focusSessionError]);
 
-  // Ambient / dashboard：只有用户同意后才打开后端摄像头
+  // Ambient / dashboard: Only open backend camera after user consent
   useEffect(() => {
     if (!isConnected) return undefined;
     if (!cameraAgreed) return undefined;

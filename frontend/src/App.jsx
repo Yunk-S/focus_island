@@ -16,7 +16,7 @@ import { AuthProvider, useAuth } from './hooks/useAuth';
 
 export const AppContext = createContext(null);
 
-/** 应用入口多为 `/`，必须匹配路由，否则 Router 不渲染任何页面（黑屏）。 */
+/** Application entry is mostly `/`, must match routes, otherwise Router won't render any page (black screen). */
 function RootRedirect() {
   const { isAuthenticated } = useAuth();
   return <Navigate to={isAuthenticated ? '/personal' : '/login'} replace />;
@@ -33,13 +33,13 @@ function AppContent() {
     return () => clearTimeout(timer);
   }, []);
 
-  // 仅当路径为登录页、注册页、找回密码页或未认证时重定向，避免打断 /ambient、/live 等路由
+  // Only redirect when path is login, register, forgot password page, or when not authenticated, to avoid interrupting /ambient, /live routes
   useEffect(() => {
     if (initialLoading || authLoading) return;
 
     const path = location.pathname;
 
-    // 已认证用户访问认证页面时停留在当前页面
+    // Keep authenticated users on current page when visiting auth pages
     if (isAuthenticated && (path === '/register' || path === '/forgot-password')) {
       return;
     }
@@ -51,7 +51,7 @@ function AppContent() {
       return;
     }
 
-    // 已认证用户从登录页重定向到个人页
+    // Redirect authenticated users from login page to personal page
     if (path === '/login') {
       navigate('/personal', { replace: true });
     }

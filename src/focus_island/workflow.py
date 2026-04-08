@@ -1,12 +1,12 @@
 """
-完整工作流管道
+Complete Workflow Pipeline
 
-整合所有模块，实现完整的专注检测工作流：
+Integrates all modules to implement the complete focus detection workflow:
 
-阶段一：系统初始化与用户身份绑定 (Auth)
-阶段二：实时感知与数据提取循环 (Perception Loop)
-阶段三：柔性状态机裁决 (State Evaluation)
-阶段四：积分结算与数据持久化 (Reward)
+Stage 1: System initialization and user identity binding (Auth)
+Stage 2: Real-time perception and data extraction loop (Perception Loop)
+Stage 3: Flexible state machine evaluation (State Evaluation)
+Stage 4: Points settlement and data persistence (Reward)
 
 Author: SSP Team
 """
@@ -44,59 +44,59 @@ from .websocket_server import WebSocketServer, WSMessage
 logger = logging.getLogger(__name__)
 
 
-# ==================== 国际化支持 ====================
+# ==================== Internationalization Support ====================
 
 class I18n:
-    """国际化支持类"""
+    """Internationalization support class"""
     
     _current_locale = "zh"
     _translations = {
         "zh": {
-            # 状态
-            "state_idle": "空闲",
-            "state_focused": "专注中",
-            "state_warning": "偏离警告",
-            "state_interrupted": "已中断",
-            "state_paused": "已暂停",
+            # States
+            "state_idle": "Idle",
+            "state_focused": "Focused",
+            "state_warning": "Warning",
+            "state_interrupted": "Interrupted",
+            "state_paused": "Paused",
             
-            # 警告原因
-            "warning_none": "无",
-            "warning_head_away": "头部偏离",
-            "warning_eyes_closed": "眼睛闭上",
-            "warning_no_face": "未检测到人脸",
+            # Warning reasons
+            "warning_none": "None",
+            "warning_head_away": "Head Away",
+            "warning_eyes_closed": "Eyes Closed",
+            "warning_no_face": "No Face",
             
-            # 提示信息
-            "no_face_detected": "未检测到人脸",
-            "face_saved": "人脸信息已保存",
-            "identity_verified": "身份已验证",
-            "cheating_detected": "检测到换人",
-            "session_started": "专注已开始",
-            "session_ended": "专注已结束",
-            "face_not_bound": "请先绑定人脸",
-            "face_bound": "人脸绑定成功",
-            "verification_failed": "人脸验证失败",
-            "face_mismatch": "人脸不匹配",
-            "similarity_low": "相似度太低",
+            # Messages
+            "no_face_detected": "No face detected",
+            "face_saved": "Face saved",
+            "identity_verified": "Identity verified",
+            "cheating_detected": "Cheating detected",
+            "session_started": "Session started",
+            "session_ended": "Session ended",
+            "face_not_bound": "Please bind face first",
+            "face_bound": "Face bound successfully",
+            "verification_failed": "Verification failed",
+            "face_mismatch": "Face mismatch",
+            "similarity_low": "Similarity too low",
             
-            # 按钮和标签
-            "btn_start": "开始专注",
-            "btn_stop": "结束专注",
-            "btn_pause": "暂停",
-            "btn_resume": "继续",
-            "btn_bind": "绑定人脸",
-            "btn_verify": "验证人脸",
-            "btn_camera_on": "开启摄像头",
-            "btn_camera_off": "关闭摄像头",
+            # Buttons and labels
+            "btn_start": "Start Focus",
+            "btn_stop": "Stop",
+            "btn_pause": "Pause",
+            "btn_resume": "Resume",
+            "btn_bind": "Bind Face",
+            "btn_verify": "Verify Face",
+            "btn_camera_on": "Start Camera",
+            "btn_camera_off": "Stop Camera",
             
-            # 统计
-            "stats_points": "积分",
-            "stats_focus_time": "专注时长",
-            "stats_streak": "连续专注",
+            # Stats
+            "stats_points": "Points",
+            "stats_focus_time": "Focus Time",
+            "stats_streak": "Streak",
             
-            # 错误
-            "error_no_face": "请确保正对摄像头",
-            "error_face_not_bound": "请先绑定人脸",
-            "error_face_detected": "请先点击开始"
+            # Errors
+            "error_no_face": "Please face the camera",
+            "error_face_not_bound": "Please bind your face first",
+            "error_face_detected": "Please click Start first"
         },
         "en": {
             # States
@@ -114,7 +114,7 @@ class I18n:
             
             # Messages
             "no_face_detected": "No face detected",
-            "face_saved": "Face data saved",
+            "face_saved": "Face saved",
             "identity_verified": "Identity verified",
             "cheating_detected": "Cheating detected",
             "session_started": "Session started",
@@ -149,22 +149,22 @@ class I18n:
     
     @classmethod
     def set_locale(cls, locale: str) -> None:
-        """设置当前语言"""
+        """Set current language"""
         if locale in cls._translations:
             cls._current_locale = locale
             logger.info(f"Locale set to: {locale}")
     
     @classmethod
     def get_locale(cls) -> str:
-        """获取当前语言"""
+        """Get current language"""
         return cls._current_locale
     
     @classmethod
     def t(cls, key: str, **kwargs) -> str:
-        """翻译文本"""
+        """Translate text"""
         text = cls._translations.get(cls._current_locale, {}).get(key, key)
         
-        # 支持格式化
+        # Support formatting
         if kwargs:
             try:
                 return text.format(**kwargs)
@@ -175,7 +175,7 @@ class I18n:
     
     @classmethod
     def get_state_text(cls, state: str) -> str:
-        """获取状态文本"""
+        """Get state text"""
         key_map = {
             "idle": "state_idle",
             "focused": "state_focused",
@@ -187,7 +187,7 @@ class I18n:
     
     @classmethod
     def get_warning_text(cls, reason: str) -> str:
-        """获取警告原因文本"""
+        """Get warning reason text"""
         key_map = {
             "none": "warning_none",
             "head_away": "warning_head_away",
@@ -198,18 +198,18 @@ class I18n:
 
 
 class WorkFlowPhase(Enum):
-    """工作流阶段"""
-    IDLE = "idle"                    # 空闲/未初始化
-    AUTH = "auth"                   # 阶段一：身份绑定
-    PERCEPTION = "perception"       # 阶段二：实时感知
-    EVALUATION = "evaluation"       # 阶段三：状态裁决
-    REWARD = "reward"              # 阶段四：积分结算
-    TERMINATED = "terminated"      # 会话终止
+    """Workflow phase"""
+    IDLE = "idle"                    # Idle/not initialized
+    AUTH = "auth"                   # Stage 1: Identity binding
+    PERCEPTION = "perception"       # Stage 2: Real-time perception
+    EVALUATION = "evaluation"       # Stage 3: State evaluation
+    REWARD = "reward"              # Stage 4: Points settlement
+    TERMINATED = "terminated"      # Session terminated
 
 
 @dataclass
 class WorkFlowState:
-    """工作流状态"""
+    """Workflow state"""
     phase: WorkFlowPhase = WorkFlowPhase.IDLE
     session_id: str = ""
     user_id: Optional[str] = None
@@ -223,28 +223,28 @@ class WorkFlowState:
 
 @dataclass
 class PerceptionResult:
-    """感知结果"""
+    """Perception result"""
     has_face: bool = False
     bbox: Optional[np.ndarray] = None
     face_confidence: float = 0.0
     
-    # 头部姿态
+    # Head pose
     pitch: float = 0.0
     yaw: float = 0.0
     roll: float = 0.0
     
-    # 眼部状态
+    # Eye state
     ear_left: float = 0.0
     ear_right: float = 0.0
     ear_avg: float = 0.0
     
-    # 身份认证
+    # Identity authentication
     embedding: Optional[np.ndarray] = None
     identity_verified: bool = False
     identity_similarity: float = 0.0
     is_cheating: bool = False
     
-    # 性能
+    # Performance
     detection_time_ms: float = 0.0
     total_time_ms: float = 0.0
     
@@ -273,13 +273,13 @@ class PerceptionResult:
 
 
 class FocusWorkFlow:
-    """专注检测完整工作流
+    """Complete focus detection workflow
     
-    四阶段工作流:
-    1. AUTH: 初始化模型，绑定用户身份
-    2. PERCEPTION: 抽帧检测，提取数据
-    3. EVALUATION: 状态机裁决
-    4. REWARD: 积分结算
+    Four-stage workflow:
+    1. AUTH: Initialize models, bind user identity
+    2. PERCEPTION: Sample frames, extract data
+    3. EVALUATION: State machine decision
+    4. REWARD: Points settlement
     """
     
     def __init__(
@@ -290,51 +290,51 @@ class FocusWorkFlow:
         enable_visualization: bool = True
     ):
         """
-        初始化工作流
+        Initialize workflow
         
         Args:
-            config: 流水线配置
-            use_cuda: 是否使用 CUDA
-            target_fps: 目标处理帧率 (默认 4 FPS，降低功耗)
-            enable_visualization: 是否启用可视化
+            config: Pipeline configuration
+            use_cuda: Enable CUDA
+            target_fps: Target processing frame rate (default 4 FPS, power saving)
+            enable_visualization: Enable visualization
         """
         self.config = config or PipelineConfig()
         self.use_cuda = use_cuda
         self.target_fps = target_fps
         self.enable_visualization = enable_visualization
         
-        # 工作流状态
+        # Workflow state
         self.workflow_state = WorkFlowState()
         
-        # 模型管理器
+        # Model manager
         self.model_manager: Optional[ModelManager] = None
         
-        # 身份认证器
+        # Identity authenticator
         self.authenticator = IdentityAuthenticator(
             similarity_threshold=0.6,
             cheating_threshold=0.5,
-            verification_interval=60.0  # 每60秒验证一次
+            verification_interval=60.0  # Verify every 60 seconds
         )
         
-        # EAR 计算器
+        # EAR calculator
         self.ear_calculator = EARCalculator(self.config)
         
-        # 帧控制器 (抽帧)
+        # Frame controller (frame sampling)
         self.frame_controller = FrameController(target_fps=target_fps)
         
-        # 人脸选择器
+        # Face selector
         self.face_selector = FaceSelector()
         
-        # 防作弊监控
+        # Anti-spoofing monitor
         self.anti_spoofing = AntiSpoofingMonitor()
         
-        # 会话管理器
+        # Session manager
         self.session_manager: Optional[SessionManager] = None
         
         # WebSocket
         self.ws_server: Optional[WebSocketServer] = None
         
-        # 回调
+        # Callbacks
         self._callbacks = {
             "phase_change": [],
             "state_change": [],
@@ -344,10 +344,10 @@ class FocusWorkFlow:
             "frame_result": []
         }
         
-        # 上一帧时间
+        # Last frame time
         self._last_frame_time = time.time()
         self._last_verification_time = time.time()
-        # 未开始专注时：用规则器推导「预览」状态（与 FSM 的 focused/warning/idle 对齐）
+        # When not in focus: use rule checker to derive "preview" state (aligned with FSM focused/warning/idle)
         self._preview_rule_checker = FocusRuleChecker(self.config)
         self._last_preview_emit_ts = 0.0
         
@@ -355,13 +355,13 @@ class FocusWorkFlow:
     
     def initialize(self) -> SystemInfo:
         """
-        阶段一：初始化系统，加载模型
+        Stage 1: Initialize system, load models
         
-        加载:
-        - RetinaFace (人脸检测)
-        - ArcFace (512维特征向量)
-        - Landmark106 (106点关键点)
-        - HeadPose (3D头部姿态)
+        Loads:
+        - RetinaFace (face detection)
+        - ArcFace (512-dim feature vector)
+        - Landmark106 (106-point landmarks)
+        - HeadPose (3D head pose)
         """
         self.workflow_state.phase = WorkFlowPhase.AUTH
         
@@ -369,22 +369,22 @@ class FocusWorkFlow:
         logger.info("PHASE 1: AUTH - Initializing System")
         logger.info("=" * 60)
         
-        # 初始化模型管理器
+        # Initialize model manager
         self.model_manager = ModelManager(
             use_cuda=self.use_cuda,
             detector_type="retinaface",
             recognition_model="arcface"
         )
         
-        # 加载所有模型
+        # Load all models
         logger.info("Loading models...")
         self.model_manager.load_all_models()
         
-        # 预热
+        # Warmup
         logger.info("Warming up models...")
         self.model_manager.warmup(iterations=3)
         
-        # 获取系统信息
+        # Get system info
         system_info = self.model_manager.get_system_info()
         logger.info(f"System info: GPU={system_info.gpu_available}")
         
@@ -399,31 +399,31 @@ class FocusWorkFlow:
         language: str = "zh"
     ) -> dict:
         """
-        验证人脸（不保存，不开始专注）
+        Verify face (don't save, don't start focus)
         
-        流程:
-        1. 检测人脸
-        2. 提取特征向量
-        3. 与本地保存的人脸对比
-        4. 返回验证结果
+        Flow:
+        1. Detect face
+        2. Extract feature vector
+        3. Compare with locally saved face
+        4. Return verification result
         
         Args:
-            image: 当前帧图像
-            user_id: 用户ID（邮箱前缀）
-            language: 语言设置
+            image: Current frame image
+            user_id: User ID (email prefix)
+            language: Language setting
             
         Returns:
-            验证结果:
-            - is_verified: 是否验证通过
-            - is_bound: 用户是否已绑定人脸
-            - similarity: 相似度
-            - message: 提示信息
+            Verification result:
+            - is_verified: Verification passed
+            - is_bound: User has bound face
+            - similarity: Similarity score
+            - message: Message
         """
         I18n.set_locale(language)
         
         logger.info(f"Verifying face: user_id={user_id}")
         
-        # 检测人脸
+        # Detect face
         faces = self.model_manager.detect_faces(image)
         
         if not faces:
@@ -436,7 +436,7 @@ class FocusWorkFlow:
                 "error_code": "NO_FACE"
             }
         
-        # 选择最大/最居中的人脸
+        # Select largest/most centered face
         self.face_selector.update_image_params(image.shape[1], image.shape[0])
         bbox = self.face_selector.select_target_face(faces)
         
@@ -450,7 +450,7 @@ class FocusWorkFlow:
                 "error_code": "SELECT_FAILED"
             }
         
-        # 提取特征向量
+        # Extract feature vector
         embedding = None
         for face in faces:
             if np.allclose(face.bbox, bbox, atol=1.0):
@@ -467,7 +467,7 @@ class FocusWorkFlow:
                 "error_code": "NO_EMBEDDING"
             }
         
-        # 与本地保存的人脸对比
+        # Compare with locally saved face
         verification_result = self.authenticator.verify_face(
             current_embedding=embedding,
             user_id=user_id
@@ -491,32 +491,32 @@ class FocusWorkFlow:
         language: str = "zh"
     ) -> dict:
         """
-        绑定人脸（保存到本地）
+        Bind face (save to local)
         
-        流程:
-        1. 检测人脸
-        2. 提取特征向量
-        3. 保存到本地文件夹
-        4. 返回绑定结果
+        Flow:
+        1. Detect face
+        2. Extract feature vector
+        3. Save to local folder
+        4. Return binding result
         
-        注意: 一个账号只能绑定一个人脸，重复绑定会覆盖
+        Note: One account can only bind one face, re-binding will overwrite
         
         Args:
-            image: 当前帧图像
-            user_id: 用户ID（邮箱前缀）
-            language: 语言设置
+            image: Current frame image
+            user_id: User ID (email prefix)
+            language: Language setting
             
         Returns:
-            绑定结果:
-            - success: 是否成功
-            - is_bound: 是否已绑定
-            - folder: 保存的文件夹路径
+            Binding result:
+            - success: Success
+            - is_bound: Is bound
+            - folder: Saved folder path
         """
         I18n.set_locale(language)
         
         logger.info(f"Binding face: user_id={user_id}")
         
-        # 检测人脸
+        # Detect face
         faces = self.model_manager.detect_faces(image)
         
         if not faces:
@@ -527,7 +527,7 @@ class FocusWorkFlow:
                 "error_code": "NO_FACE"
             }
         
-        # 选择最大/最居中的人脸
+        # Select largest/most centered face
         self.face_selector.update_image_params(image.shape[1], image.shape[0])
         bbox = self.face_selector.select_target_face(faces)
         
@@ -539,7 +539,7 @@ class FocusWorkFlow:
                 "error_code": "SELECT_FAILED"
             }
         
-        # 提取特征向量和对齐人脸
+        # Extract feature vector and align face
         embedding = None
         aligned_face = None
         for face in faces:
@@ -555,10 +555,10 @@ class FocusWorkFlow:
                 "error_code": "NO_EMBEDDING"
             }
         
-        # 检查是否已绑定过
+        # Check if already bound
         was_bound = self.authenticator.has_bound_face(user_id)
         
-        # 保存人脸数据到本地文件夹
+        # Save face data to local folder
         save_result = self.authenticator.save_user_face_data(
             user_id=user_id,
             face_image=aligned_face,
@@ -588,29 +588,29 @@ class FocusWorkFlow:
         language: str = "zh"
     ) -> dict:
         """
-        开始专注检测
+        Start focus detection
         
-        前提条件:
-        1. 用户必须已绑定人脸
-        2. 当前人脸必须通过验证
+        Prerequisites:
+        1. User must have bound face
+        2. Current face must pass verification
         
-        流程:
-        1. 验证人脸
-        2. 初始化会话管理器
-        3. 更新工作流状态
+        Flow:
+        1. Verify face
+        2. Initialize session manager
+        3. Update workflow state
         
         Args:
-            image: 当前帧图像
-            user_id: 用户ID（邮箱前缀）
-            seat_id: 座位ID
-            language: 语言设置
+            image: Current frame image
+            user_id: User ID (email prefix)
+            seat_id: Seat ID
+            language: Language setting
             
         Returns:
-            开始结果:
-            - success: 是否成功
-            - is_verified: 验证是否通过
-            - is_bound: 是否已绑定
-            - session_id: 会话ID
+            Start result:
+            - success: Success
+            - is_verified: Verification passed
+            - is_bound: Is bound
+            - session_id: Session ID
         """
         I18n.set_locale(language)
         
@@ -683,7 +683,7 @@ class FocusWorkFlow:
                 "error_code": "NOT_BOUND"
             }
         
-        # 绑定用户身份（用于后续防作弊验证）
+        # Bind user identity (for subsequent anti-cheating verification)
         user_data = self.authenticator.load_user_face_data(user_id)
         if user_data:
             self.authenticator.bind_user(
@@ -692,7 +692,7 @@ class FocusWorkFlow:
                 embedding=user_data["embedding"]
             )
         
-        # 初始化会话管理器
+        # Initialize session manager
         self.session_manager = SessionManager(
             config=self.config,
             user_id=user_id,
@@ -700,7 +700,7 @@ class FocusWorkFlow:
         )
         self.session_manager.start_session()
         
-        # 更新工作流状态
+        # Update workflow state
         self.workflow_state.phase = WorkFlowPhase.PERCEPTION
         self.workflow_state.is_active = True
         self.workflow_state.start_time = time.time()
@@ -708,7 +708,7 @@ class FocusWorkFlow:
         self.workflow_state.seat_id = seat_id
         self.workflow_state.session_id = self.session_manager.session_id
         
-        # 重置帧计数器
+        # Reset frame counter
         self.frame_controller.reset()
         self.anti_spoofing.reset()
         
@@ -877,22 +877,22 @@ class FocusWorkFlow:
     
     def process_frame(self, image: np.ndarray) -> Optional[dict]:
         """
-        处理单帧 (阶段二+三+四)
+        Process single frame (Stage 2+3+4)
         
-        包含:
-        - 抽帧控制
-        - 人脸检测和选择
-        - EAR 计算
-        - 头部姿态估计
-        - 身份验证 (定期)
-        - 状态机处理
-        - 积分计算
+        Includes:
+        - Frame sampling control
+        - Face detection and selection
+        - EAR calculation
+        - Head pose estimation
+        - Identity verification (periodic)
+        - State machine processing
+        - Points calculation
         
         Args:
-            image: 输入图像
+            image: Input image
             
         Returns:
-            处理结果 或 None (如果跳过此帧)
+            Processing result or None (if skip this frame)
         """
         if not self.workflow_state.is_active:
             return None
@@ -901,14 +901,14 @@ class FocusWorkFlow:
         delta_time = current_time - self._last_frame_time
         self._last_frame_time = current_time
         
-        # 更新图像参数
+        # Update image params
         self.face_selector.update_image_params(image.shape[1], image.shape[0])
         
-        # ========== 阶段二：感知 ==========
+        # ========== Stage 2: Perception ==========
         
-        # 1. 抽帧控制
+        # 1. Frame sampling control
         if not self.frame_controller.should_process_frame():
-            return None  # 跳过此帧
+            return None  # Skip this frame
         
         frame_start = time.time()
         self.workflow_state.frame_count += 1
@@ -918,20 +918,20 @@ class FocusWorkFlow:
         )
         perception.total_time_ms = (time.time() - frame_start) * 1000
         
-        # ========== 阶段三：状态裁决 ==========
+        # ========== Stage 3: State Evaluation ==========
         
-        # 判断当前帧是否通过身份验证
-        # - 如果用户未绑定（start_focus 失败）→ 未验证
-        # - 如果用户已绑定且验证间隔内（刚绑定）→ 已验证
-        # - 如果用户已绑定且需要验证 → 检查最新验证结果
+        # Check if current frame passes identity verification
+        # - If user hasn't bound (start_focus failed) -> Not verified
+        # - If user has bound and within verification interval (just bound) -> Verified
+        # - If user has bound and needs verification -> Check latest verification result
         authenticator = self.authenticator
         if authenticator.current_user is None:
             is_verified = False
         elif not authenticator.should_verify():
-            # 刚绑定或验证间隔内，无需重新验证，视为已验证
+            # Just bound or within verification interval, no need to re-verify, considered verified
             is_verified = True
         else:
-            # 需要验证，使用最新验证结果
+            # Need verification, use latest verification result
             is_verified = getattr(perception, 'identity_verified', False)
         
         session_result = None
@@ -946,17 +946,17 @@ class FocusWorkFlow:
                 identity_verified=is_verified
             )
             
-            # 同步 perception.identity_verified 与实际验证结果
+            # Sync perception.identity_verified with actual verification result
             perception.identity_verified = is_verified
         
-        # ========== 阶段四：积分结算 ==========
-        # 积分已在 session_manager 中自动计算
+        # ========== Stage 4: Points Settlement ==========
+        # Points are automatically calculated in session_manager
         
-        # 更新工作流状态
+        # Update workflow state
         self.workflow_state.processed_frames += 1
         self.workflow_state.last_update = time.time()
         
-        # 构建完整结果
+        # Build complete result
         result = {
             "workflow": {
                 "phase": self.workflow_state.phase.value,
@@ -969,7 +969,7 @@ class FocusWorkFlow:
             },
             "perception": perception.to_dict(),
             "session": session_result if session_result else None,
-            # 国际化状态文本
+            # Internationalized state text
             "i18n": {
                 "state_text": I18n.get_state_text(session_result.get("state", "idle") if session_result else "idle"),
                 "warning_text": I18n.get_warning_text(session_result.get("warning_reason", "none") if session_result else "none"),
@@ -997,23 +997,23 @@ class FocusWorkFlow:
         return result
     
     def end_session(self) -> dict:
-        """结束会话"""
+        """End session"""
         if not self.workflow_state.is_active:
             return {"error": "No active session"}
         
         logger.info("Ending session...")
         
-        # 获取最终摘要
+        # Get final summary
         summary = self.session_manager.end_session() if self.session_manager else {}
         
-        # 解绑用户
+        # Unbind user
         self.authenticator.unbind_user()
         
-        # 更新状态
+        # Update state
         self.workflow_state.phase = WorkFlowPhase.TERMINATED
         self.workflow_state.is_active = False
         
-        # 重置组件
+        # Reset components
         self.frame_controller.reset()
         self.face_selector.reset()
         self.anti_spoofing.reset()
@@ -1023,7 +1023,7 @@ class FocusWorkFlow:
         return summary
     
     def get_current_state(self) -> dict:
-        """获取当前状态"""
+        """Get current state"""
         return {
             "workflow_phase": self.workflow_state.phase.value,
             "is_active": self.workflow_state.is_active,
@@ -1037,12 +1037,12 @@ class FocusWorkFlow:
         }
     
     def register_callback(self, event: str, callback: Callable) -> None:
-        """注册回调"""
+        """Register callback"""
         if event in self._callbacks:
             self._callbacks[event].append(callback)
     
     def _emit(self, event: str, *args, **kwargs) -> None:
-        """触发回调"""
+        """Emit callback"""
         for callback in self._callbacks.get(event, []):
             try:
                 callback(*args, **kwargs)
@@ -1050,7 +1050,7 @@ class FocusWorkFlow:
                 logger.error(f"Callback error in {event}: {e}")
     
     def visualize_frame(self, image: np.ndarray, result: dict) -> np.ndarray:
-        """可视化处理结果"""
+        """Visualize processing result"""
         if not self.enable_visualization:
             return image
         
@@ -1061,7 +1061,7 @@ class FocusWorkFlow:
         session = result.get("session", {})
         workflow = result.get("workflow", {})
         
-        # 状态颜色
+        # State colors
         state = session.get("current_state", "idle")
         state_colors = {
             "idle": (128, 128, 128),
@@ -1071,12 +1071,12 @@ class FocusWorkFlow:
         }
         color = state_colors.get(state, (255, 255, 255))
         
-        # 信息面板
+        # Info panel
         info_y = 25
         line_h = 22
         font = cv2.FONT_HERSHEY_SIMPLEX
         
-        # 用户信息
+        # User info
         cv2.putText(vis, f"User: {self.workflow_state.user_id or 'N/A'}", 
                     (10, info_y), font, 0.5, (255, 255, 255), 1)
         info_y += line_h
@@ -1085,7 +1085,7 @@ class FocusWorkFlow:
                     (10, info_y), font, 0.5, (255, 255, 255), 1)
         info_y += line_h
         
-        # 状态
+        # State
         state_text = f"State: {state.upper()}"
         cv2.putText(vis, state_text, (10, info_y), font, 0.6, color, 2)
         info_y += line_h
@@ -1096,7 +1096,7 @@ class FocusWorkFlow:
                     (10, info_y), font, 0.4, (200, 200, 200), 1)
         info_y += line_h
         
-        # 头部姿态
+        # Head pose
         hp = perception.get("head_pose", {})
         cv2.putText(vis, f"Pitch: {hp.get('pitch', 0):.1f}  Yaw: {hp.get('yaw', 0):.1f}", 
                     (10, info_y), font, 0.4, (255, 255, 255), 1)
@@ -1110,7 +1110,7 @@ class FocusWorkFlow:
                     (10, info_y), font, 0.4, ear_color, 1)
         info_y += line_h
         
-        # 身份验证
+        # Identity verification
         identity = perception.get("identity", {})
         if identity.get("similarity", 0) > 0:
             sim = identity.get("similarity", 0)
@@ -1119,7 +1119,7 @@ class FocusWorkFlow:
                         (10, info_y), font, 0.4, sim_color, 1)
             info_y += line_h
         
-        # 积分
+        # Points
         score = session.get("score_summary", {})
         points = score.get("total_points", 0)
         focus_time = score.get("current_streak_min", 0)
@@ -1127,23 +1127,23 @@ class FocusWorkFlow:
                     (10, info_y), font, 0.4, (255, 255, 0), 1)
         info_y += line_h
         
-        # 宽容时间
+        # Grace time
         grace = session.get("fsm_stats", {}).get("grace_remaining", 0)
         if grace > 0:
             cv2.putText(vis, f"Grace: {grace:.1f}s", 
                         (10, info_y), font, 0.4, (0, 255, 255), 1)
             info_y += line_h
         
-        # 边框
+        # Border
         border_color = color
         if identity.get("is_cheating", False):
-            border_color = (0, 0, 255)  # 红色边框表示作弊
+            border_color = (0, 0, 255)  # Red border indicates cheating
         cv2.rectangle(vis, (0, 0), (w - 1, h - 1), border_color, 3)
         
         return vis
     
     def release(self) -> None:
-        """释放资源"""
+        """Release resources"""
         if self.model_manager:
             self.model_manager.release()
         
@@ -1154,7 +1154,7 @@ class FocusWorkFlow:
 
 
 def asyncio_run(coro):
-    """运行异步协程"""
+    """Run async coroutine"""
     import asyncio
     try:
         loop = asyncio.get_running_loop()

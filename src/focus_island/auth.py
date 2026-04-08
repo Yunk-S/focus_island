@@ -1,7 +1,7 @@
 """
-身份认证模块
+Identity Authentication Module
 
-实现用户身份绑定和防作弊检测。
+Implements user identity binding and anti-cheating detection.
 
 Author: SSP Team
 """
@@ -23,11 +23,11 @@ from .types import WarningReason
 
 logger = logging.getLogger(__name__)
 
-# 人脸数据存储目录
-# 项目结构: e:\project\SSP\focus_island\user_faces\user_{邮箱前缀}\
+# Face data storage directory
+# Project structure: e:\project\SSP\focus_island\user_faces\user_{email_prefix}\
 # __file__ = e:\project\SSP\focus_island\src\focus_island\auth.py
-# 向上两级: src -> focus_island(项目根目录) -> e:\project\SSP
-# 然后进入 focus_island/user_faces
+# Go up two levels: src -> focus_island(project root) -> e:\project\SSP
+# Then enter focus_island/user_faces
 FACE_DATA_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
     "user_faces"
@@ -36,25 +36,25 @@ FACE_DATA_DIR = os.path.join(
 
 def sanitize_filename(name: str) -> str:
     """
-    清理文件名，移除非法字符
+    Sanitize filename, remove illegal characters
     
     Args:
-        name: 原始名称（如邮箱前缀）
+        name: Original name (e.g., email prefix)
         
     Returns:
-        安全的文件名
+        Safe filename
     """
-    # 替换非法字符
+    # Replace illegal characters
     illegal_chars = ['@', '.', '/', '\\', ':', '*', '?', '"', '<', '>', '|', ' ']
     safe_name = name
     for char in illegal_chars:
         safe_name = safe_name.replace(char, '_')
     
-    # 移除连续下划线
+    # Remove consecutive underscores
     while '__' in safe_name:
         safe_name = safe_name.replace('__', '_')
     
-    # 移除首尾下划线
+    # Remove leading/trailing underscores
     safe_name = safe_name.strip('_')
     
     return safe_name if safe_name else "unknown_user"
@@ -62,13 +62,13 @@ def sanitize_filename(name: str) -> str:
 
 def get_user_face_folder(user_id: str) -> str:
     """
-    获取用户人脸文件夹路径
+    Get user face folder path
     
     Args:
-        user_id: 用户ID（通常是邮箱前缀）
+        user_id: User ID (usually email prefix)
         
     Returns:
-        文件夹路径
+        Folder path
     """
     safe_name = sanitize_filename(user_id)
     return os.path.join(FACE_DATA_DIR, f"user_{safe_name}")
@@ -76,10 +76,10 @@ def get_user_face_folder(user_id: str) -> str:
 
 @dataclass
 class UserProfile:
-    """用户档案"""
+    """User profile"""
     user_id: str
-    seat_id: str                      # 座位ID
-    embedding: np.ndarray             # 基准特征向量 (512维)
+    seat_id: str                      # Seat ID
+    embedding: np.ndarray             # Baseline feature vector (512-dim)
     registered_at: datetime = field(default_factory=datetime.now)
     last_verified: datetime = field(default_factory=datetime.now)
     verification_count: int = 0
@@ -101,11 +101,11 @@ class UserProfile:
 
 @dataclass 
 class VerificationResult:
-    """身份验证结果"""
+    """Identity verification result"""
     is_verified: bool
-    similarity: float                 # 余弦相似度
-    threshold: float                 # 判定阈值
-    is_cheating: bool                # 是否作弊
+    similarity: float                 # Cosine similarity
+    threshold: float                 # Decision threshold
+    is_cheating: bool               # Is cheating
     message: str
     timestamp: float = field(default_factory=time.time)
     
@@ -121,37 +121,37 @@ class VerificationResult:
 
 
 class IdentityAuthenticator:
-    """身份认证器
+    """Identity Authenticator
     
-    管理用户身份绑定和实时身份验证。
-    使用 ArcFace 提取的 512 维特征向量进行余弦相似度比对。
+    Manages user identity binding and real-time identity verification.
+    Uses 512-dim feature vectors extracted by ArcFace for cosine similarity comparison.
     """
     
     def __init__(
         self,
         similarity_threshold: float = 0.6,
         cheating_threshold: float = 0.5,
-        verification_interval: float = 60.0,  # 每60秒验证一次
+        verification_interval: float = 60.0,  # Verify every 60 seconds
         max_failed_verifications: int = 3
     ):
         """
-        初始化身份认证器
+        Initialize identity authenticator
         
         Args:
-            similarity_threshold: 身份验证通过的相似度阈值 (默认 0.6)
-            cheating_threshold: 判定为换人的相似度阈值 (默认 0.5)
-            verification_interval: 自动验证间隔 (秒)
-            max_failed_verifications: 允许的最大连续验证失败次数
+            similarity_threshold: Similarity threshold for verification pass (default 0.6)
+            cheating_threshold: Similarity threshold for person swap detection (default 0.5)
+            verification_interval: Auto verification interval (seconds)
+            max_failed_verifications: Max consecutive verification failures allowed
         """
         self.similarity_threshold = similarity_threshold
         self.cheating_threshold = cheating_threshold
         self.verification_interval = verification_interval
         self.max_failed_verifications = max_failed_verifications
         
-        # 当前绑定的用户
+        # Current bound user
         self.current_user: Optional[UserProfile] = None
         
-        # 验证状态
+        # Verification state
         self._last_verification_time = 0.0
         self._consecutive_failures = 0
         self._is_locked = False
@@ -170,19 +170,19 @@ class IdentityAuthenticator:
         embedding: np.ndarray
     ) -> UserProfile:
         """
-        绑定用户身份 (阶段一)
+        Bind user identity (Stage 1)
         
-        当用户点击"开始专注"时，提取特征向量并绑定到座位。
+        When user clicks "Start Focus", extract feature vector and bind to seat.
         
         Args:
-            user_id: 用户ID
-            seat_id: 座位ID
-            embedding: ArcFace 提取的 512 维特征向量
+            user_id: User ID
+            seat_id: Seat ID
+            embedding: 512-dim feature vector extracted by ArcFace
             
         Returns:
-            UserProfile 对象
+            UserProfile object
         """
-        # 创建用户档案
+        # Create user profile
         profile = UserProfile(
             user_id=user_id,
             seat_id=seat_id,
@@ -208,13 +208,13 @@ class IdentityAuthenticator:
         current_embedding: np.ndarray
     ) -> VerificationResult:
         """
-        验证当前人脸是否与注册用户匹配 (防作弊)
+        Verify if current face matches registered user (anti-cheating)
         
         Args:
-            current_embedding: 当前帧提取的 512 维特征向量
+            current_embedding: 512-dim feature vector extracted from current frame
             
         Returns:
-            VerificationResult 对象
+            VerificationResult object
         """
         if self.current_user is None:
             return VerificationResult(
@@ -225,20 +225,20 @@ class IdentityAuthenticator:
                 message="No user bound"
             )
         
-        # 计算余弦相似度
+        # Calculate cosine similarity
         similarity = self._cosine_similarity(
             self.current_user.embedding,
             current_embedding
         )
         
-        # 更新验证统计
+        # Update verification statistics
         self.current_user.verification_count += 1
         self.current_user.last_verified = datetime.now()
         self._last_verification_time = time.time()
         
-        # 判断结果
+        # Determine result
         if similarity >= self.similarity_threshold:
-            # 验证通过
+            # Verification passed
             self._consecutive_failures = 0
             self.current_user.failed_verifications = 0
             
@@ -251,7 +251,7 @@ class IdentityAuthenticator:
             )
         
         elif similarity >= self.cheating_threshold:
-            # 验证失败但未判定为换人
+            # Verification failed but not detected as person swap
             self._consecutive_failures += 1
             self.current_user.failed_verifications = self._consecutive_failures
             
@@ -264,7 +264,7 @@ class IdentityAuthenticator:
             )
         
         else:
-            # 判定为换人作弊
+            # Detected as person swap / cheating
             self._consecutive_failures += 1
             self._is_locked = True
             
@@ -277,7 +277,7 @@ class IdentityAuthenticator:
             )
     
     def should_verify(self) -> bool:
-        """检查是否需要执行自动验证"""
+        """Check if automatic verification is needed"""
         if self.current_user is None:
             return False
         
@@ -285,21 +285,21 @@ class IdentityAuthenticator:
         return elapsed >= self.verification_interval
     
     def is_locked(self) -> bool:
-        """检查是否被锁定 (检测到作弊)"""
+        """Check if locked (cheating detected)"""
         return self._is_locked
     
     def unlock(self) -> None:
-        """解除锁定"""
+        """Release lock"""
         self._is_locked = False
         self._consecutive_failures = 0
         logger.info("Authentication unlocked")
     
     def unbind_user(self) -> Optional[UserProfile]:
         """
-        解绑当前用户
+        Unbind current user
 
         Returns:
-            之前的用户档案
+            Previous user profile
         """
         old_user = self.current_user
         
@@ -321,40 +321,40 @@ class IdentityAuthenticator:
         metadata: Optional[dict] = None
     ) -> dict:
         """
-        保存用户人脸数据到本地文件夹
+        Save user face data to local folder
         
-        保存内容:
-        - 人脸图像 (cropped)
-        - 512维特征向量 (.npy)
-        - 元数据信息 (.json)
+        Saves:
+        - Face image (cropped)
+        - 512-dim feature vector (.npy)
+        - Metadata (.json)
         
         Args:
-            user_id: 用户ID（邮箱前缀）
-            face_image: 人脸图像 (裁剪后)
-            embedding: 512维特征向量
-            metadata: 额外元数据
+            user_id: User ID (email prefix)
+            face_image: Face image (cropped)
+            embedding: 512-dim feature vector
+            metadata: Additional metadata
             
         Returns:
-            保存结果
+            Save result
         """
         try:
-            # 使用邮箱前缀创建用户专属文件夹
+            # Create user-specific folder using email prefix
             safe_name = sanitize_filename(user_id)
             user_folder = os.path.join(FACE_DATA_DIR, f"user_{safe_name}")
             os.makedirs(user_folder, exist_ok=True)
             
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             
-            # 1. 保存人脸图像
+            # 1. Save face image
             face_path = os.path.join(user_folder, f"face_{timestamp}.jpg")
             if face_image is not None and face_image.size > 0:
                 cv2.imwrite(face_path, face_image)
             
-            # 2. 保存特征向量
+            # 2. Save feature vector
             embedding_path = os.path.join(user_folder, "embedding.npy")
             np.save(embedding_path, embedding)
             
-            # 3. 保存元数据
+            # 3. Save metadata
             meta_data = {
                 "user_id": user_id,
                 "safe_name": safe_name,
@@ -388,16 +388,16 @@ class IdentityAuthenticator:
     
     def load_user_face_data(self, user_id: str) -> Optional[dict]:
         """
-        从本地文件夹加载用户人脸数据
+        Load user face data from local folder
         
         Args:
-            user_id: 用户ID（邮箱前缀，会被清理）
+            user_id: User ID (will be sanitized)
             
         Returns:
-            用户数据字典 或 None
+            User data dict or None
         """
         try:
-            # 使用 sanitize_filename 确保路径一致
+            # Use sanitize_filename to ensure path consistency
             safe_name = sanitize_filename(user_id)
             user_folder = os.path.join(FACE_DATA_DIR, f"user_{safe_name}")
             meta_path = os.path.join(user_folder, "metadata.json")
@@ -407,11 +407,11 @@ class IdentityAuthenticator:
                 logger.debug(f"Face data not found for user: {user_id} (safe: {safe_name})")
                 return None
             
-            # 加载元数据
+            # Load metadata
             with open(meta_path, 'r', encoding='utf-8') as f:
                 metadata = json.load(f)
             
-            # 加载特征向量
+            # Load feature vector
             embedding = np.load(embedding_path)
             
             return {
@@ -427,10 +427,10 @@ class IdentityAuthenticator:
     
     def get_saved_users(self) -> list:
         """
-        获取所有已保存的用户列表
+        Get all saved user list
         
         Returns:
-            用户ID列表
+            User ID list
         """
         try:
             if not os.path.exists(FACE_DATA_DIR):
@@ -457,19 +457,19 @@ class IdentityAuthenticator:
         user_id: Optional[str] = None
     ) -> dict:
         """
-        验证人脸是否匹配已保存的人脸
+        Verify if face matches saved face
         
         Args:
-            current_embedding: 当前检测到的人脸特征向量
-            user_id: 指定用户ID（可选，如果不指定则尝试匹配所有已保存用户）
+            current_embedding: Current detected face feature vector
+            user_id: Specified user ID (optional, if not specified, try to match all saved users)
             
         Returns:
-            验证结果字典:
-            - is_verified: 是否验证通过
-            - matched_user: 匹配的用户ID
-            - similarity: 相似度
-            - is_bound: 用户是否已绑定人脸
-            - message: 提示信息
+            Verification result dict:
+            - is_verified: Verification passed
+            - matched_user: Matched user ID
+            - similarity: Similarity
+            - is_bound: User has bound face
+            - message: Message
         """
         result = {
             "is_verified": False,
@@ -479,7 +479,7 @@ class IdentityAuthenticator:
             "message": "No face registered"
         }
         
-        # 如果指定了用户ID，只验证该用户
+        # If user ID is specified, only verify that user
         if user_id:
             user_data = self.load_user_face_data(user_id)
             if user_data is None:
@@ -504,7 +504,7 @@ class IdentityAuthenticator:
             
             return result
         
-        # 如果没有指定用户ID，尝试匹配所有已保存用户
+        # If no user ID specified, try to match all saved users
         saved_users = self.get_saved_users()
         if not saved_users:
             result["message"] = "No registered users"
@@ -544,13 +544,13 @@ class IdentityAuthenticator:
     
     def has_bound_face(self, user_id: str) -> bool:
         """
-        检查用户是否已绑定人脸
+        Check if user has bound face
         
         Args:
-            user_id: 用户ID（邮箱前缀）
+            user_id: User ID (email prefix)
             
         Returns:
-            是否已绑定
+            Is bound
         """
         safe_name = sanitize_filename(user_id)
         user_folder = os.path.join(FACE_DATA_DIR, f"user_{safe_name}")
@@ -559,13 +559,13 @@ class IdentityAuthenticator:
     
     def delete_user_face_data(self, user_id: str) -> dict:
         """
-        删除用户的人脸数据
+        Delete user's face data
         
         Args:
-            user_id: 用户ID（邮箱前缀）
+            user_id: User ID (email prefix)
             
         Returns:
-            删除结果
+            Delete result
         """
         try:
             safe_name = sanitize_filename(user_id)
@@ -574,7 +574,7 @@ class IdentityAuthenticator:
             if not os.path.exists(user_folder):
                 return {"success": False, "error": "User folder not found"}
             
-            # 删除文件夹中的所有文件
+            # Delete all files in folder
             import shutil
             shutil.rmtree(user_folder)
             
@@ -589,25 +589,25 @@ class IdentityAuthenticator:
     @staticmethod
     def _cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
         """
-        计算两个向量的余弦相似度
+        Calculate cosine similarity between two vectors
         
         Args:
-            a, b: 两个向量，形状相同
+            a, b: Two vectors, same shape
             
         Returns:
-            余弦相似度 [-1, 1]
+            Cosine similarity [-1, 1]
         """
-        # 假设向量已经是 L2 归一化的
+        # Assume vectors are already L2 normalized
         # cos_sim = dot(a, b) / (||a|| * ||b||)
-        # 对于归一化向量，简化为 dot(a, b)
+        # For normalized vectors, simplified to dot(a, b)
         
         dot_product = np.dot(a, b)
         
-        # 确保在 [-1, 1] 范围内 (处理浮点误差)
+        # Ensure in [-1, 1] range (handle floating point error)
         return float(np.clip(dot_product, -1.0, 1.0))
     
     def get_current_user_info(self) -> Optional[dict]:
-        """获取当前用户信息"""
+        """Get current user info"""
         if self.current_user is None:
             return None
         
@@ -627,7 +627,7 @@ class IdentityAuthenticator:
         cheating_threshold: Optional[float] = None,
         verification_interval: Optional[float] = None
     ) -> None:
-        """更新认证阈值"""
+        """Update authentication thresholds"""
         if similarity_threshold is not None:
             self.similarity_threshold = similarity_threshold
         if cheating_threshold is not None:
@@ -644,8 +644,8 @@ class IdentityAuthenticator:
 
 
 def create_test_embedding(seed: int = 42) -> np.ndarray:
-    """创建测试用特征向量 (用于开发测试)"""
+    """Create test feature vector (for development testing)"""
     np.random.seed(seed)
     vec = np.random.randn(512).astype(np.float32)
-    vec = vec / np.linalg.norm(vec)  # L2 归一化
+    vec = vec / np.linalg.norm(vec)  # L2 normalization
     return vec

@@ -1,10 +1,10 @@
 """
-UniFace 模型管理器
+UniFace Model Manager
 
-统一管理所有 ONNX 模型的加载和初始化。
-人脸检测遵循 UniFace 文档: https://github.com/yakhyo/uniface
-（`from uniface.detection import RetinaFace` + `RetinaFace(providers=...)`；
-本地权重放在项目 `models/`，通过 `UNIFACE_CACHE_DIR` 指向该目录）。
+Unified management for all ONNX model loading and initialization.
+Face detection follows UniFace documentation: https://github.com/yakhyo/uniface
+(`from uniface.detection import RetinaFace` + `RetinaFace(providers=...)`;
+Local weights in project `models/`, pointed by `UNIFACE_CACHE_DIR`).
 
 Author: SSP Team
 """
@@ -13,11 +13,11 @@ from __future__ import annotations
 
 import os
 
-# 设置模型路径为项目相对路径 (必须在 import uniface 之前设置)
-# 项目结构: e:\project\SSP\focus_island\models\
+# Set model path as project relative path (must set before import uniface)
+# Project structure: e:\project\SSP\focus_island\models\
 # __file__ = e:\project\SSP\focus_island\src\focus_island\model_manager.py
-# 向上三级: src -> focus_island(项目根目录) -> e:\project\SSP
-# 然后进入 focus_island/models
+# Go up three levels: src -> focus_island(project root) -> e:\project\SSP
+# Then enter focus_island/models
 MODEL_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
     "models"
@@ -47,7 +47,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class ModelStats:
-    """模型统计信息"""
+    """Model statistics"""
     model_name: str = ""
     load_time_ms: float = 0.0
     inference_count: int = 0
@@ -55,20 +55,20 @@ class ModelStats:
     avg_inference_time_ms: float = 0.0
     
     def record_inference(self, time_ms: float) -> None:
-        """记录一次推理"""
+        """Record an inference"""
         self.inference_count += 1
         self.total_inference_time_ms += time_ms
         self.avg_inference_time_ms = self.total_inference_time_ms / self.inference_count
 
 
 class ModelManager:
-    """UniFace 模型管理器
+    """UniFace Model Manager
     
-    统一管理以下模型的生命周期:
-    - RetinaFace: 人脸检测 + 5点关键点
-    - ArcFace: 512维面部特征向量提取
-    - Landmark106: 106点精细关键点
-    - HeadPose: 3D头部姿态估计 (Pitch/Yaw/Roll)
+    Unified lifecycle management for:
+    - RetinaFace: Face detection + 5-point landmarks
+    - ArcFace: 512-dim face feature vector extraction
+    - Landmark106: 106-point fine landmarks
+    - HeadPose: 3D head pose estimation (Pitch/Yaw/Roll)
     """
     
     def __init__(
@@ -79,13 +79,13 @@ class ModelManager:
         headpose_model: str = "resnet18"
     ):
         """
-        初始化模型管理器
+        Initialize model manager
         
         Args:
-            use_cuda: 是否使用 CUDA (GPU)
-            detector_type: 人脸检测器类型
-            recognition_model: 人脸识别模型类型
-            headpose_model: 头部姿态模型类型
+            use_cuda: Enable CUDA (GPU)
+            detector_type: Face detector type
+            recognition_model: Face recognition model type
+            headpose_model: Head pose model type
         """
         self.use_cuda = use_cuda
         self.detector_type = detector_type
@@ -97,42 +97,42 @@ class ModelManager:
             logger.info("CUDA requested but not available; ONNX using CPU only")
         logger.info("ONNX execution providers: %s", self.providers)
         
-        # 模型实例 (类型仅作提示，由 load_all_models 动态赋值)
+        # Model instances (type hints only, assigned dynamically by load_all_models)
         self.detector = None
         self.recognizer = None
         self.landmark_detector = None
         self.headpose_estimator = None
         
-        # 模型统计
+        # Model statistics
         self.detector_stats = ModelStats(model_name="detector")
         self.recognizer_stats = ModelStats(model_name="recognizer")
         self.landmark_stats = ModelStats(model_name="landmark")
         self.headpose_stats = ModelStats(model_name="headpose")
         
-        # 加载状态
+        # Load state
         self._models_loaded = False
         self._load_start_time: float = 0
         self._total_load_time_ms: float = 0
     
     def load_all_models(self) -> None:
-        """加载所有模型（延迟导入 uniface 以规避 scipy DLL 崩溃）"""
+        """Load all models (lazy import uniface to avoid scipy DLL crash)"""
         if self._models_loaded:
             logger.warning("Models already loaded")
             return
 
-        # ── 真正的 uniface 导入在这里执行 ───────────────────────────────
+        # ── Real uniface import here ──────────────────────────────────────
         from uniface.detection import RetinaFace, SCRFD  # noqa: F811
         from uniface.recognition import ArcFace, MobileFace  # noqa: F811
         from uniface.landmark import Landmark106  # noqa: F811
         from uniface.headpose import HeadPose  # noqa: F811
-        # ─────────────────────────────────────────────────────────────
+        # ─────────────────────────────────────────────────────────────────
 
         self._load_start_time = time.time()
         
-        # 检查模型文件是否存在
+        # Check if model files exist
         self._ensure_models_exist()
         
-        # 1. 加载人脸检测器
+        # 1. Load face detector
         logger.info("Loading face detector...")
         t0 = time.time()
         if self.detector_type == "scrfd":
@@ -141,7 +141,7 @@ class ModelManager:
             self.detector = RetinaFace(providers=self.providers)
         logger.info(f"Face detector loaded in {(time.time() - t0) * 1000:.1f}ms")
         
-        # 2. 加载人脸识别模型 (ArcFace)
+        # 2. Load face recognition model (ArcFace)
         logger.info("Loading face recognizer (ArcFace)...")
         t0 = time.time()
         if self.recognition_model == "mobileface":
@@ -150,13 +150,13 @@ class ModelManager:
             self.recognizer = ArcFace(providers=self.providers)
         logger.info(f"Face recognizer loaded in {(time.time() - t0) * 1000:.1f}ms")
         
-        # 3. 加载106点关键点检测器
+        # 3. Load 106-point landmark detector
         logger.info("Loading 106-point landmark detector...")
         t0 = time.time()
         self.landmark_detector = Landmark106(providers=self.providers)
         logger.info(f"Landmark detector loaded in {(time.time() - t0) * 1000:.1f}ms")
         
-        # 4. 加载头部姿态估计模型
+        # 4. Load head pose estimation model
         logger.info("Loading head pose estimator...")
         t0 = time.time()
         self.headpose_estimator = HeadPose(providers=self.providers)
@@ -167,7 +167,7 @@ class ModelManager:
         logger.info(f"All models loaded in {self._total_load_time_ms:.1f}ms total")
     
     def _ensure_models_exist(self) -> None:
-        """确保模型文件存在"""
+        """Ensure model files exist"""
         required_models = {
             "retinaface_mnet_v2.onnx": "Face Detection",
             "arcface_mnet.onnx": "Face Recognition",
@@ -189,13 +189,13 @@ class ModelManager:
     
     def detect_faces(self, image: np.ndarray) -> list:
         """
-        人脸检测
+        Face detection
         
         Args:
-            image: 输入图像 (BGR格式)
+            image: Input image (BGR format)
             
         Returns:
-            Face 对象列表
+            List of Face objects
         """
         t0 = time.time()
         faces = self.detector.detect(image)
@@ -204,14 +204,14 @@ class ModelManager:
     
     def extract_embedding(self, image: np.ndarray, landmarks: np.ndarray) -> np.ndarray:
         """
-        提取人脸特征向量 (512维)
+        Extract face feature vector (512-dim)
         
         Args:
-            image: 输入图像 (BGR格式)
-            landmarks: 5点关键点 (用于人脸对齐)
+            image: Input image (BGR format)
+            landmarks: 5-point landmarks (for face alignment)
             
         Returns:
-            512维归一化特征向量
+            512-dim normalized feature vector
         """
         t0 = time.time()
         embedding = self.recognizer.get_normalized_embedding(image, landmarks)
@@ -220,14 +220,14 @@ class ModelManager:
     
     def get_landmarks_106(self, image: np.ndarray, bbox: np.ndarray) -> np.ndarray:
         """
-        获取106点面部关键点
+        Get 106-point facial landmarks
         
         Args:
-            image: 输入图像 (BGR格式)
-            bbox: 人脸边界框 [x1, y1, x2, y2]
+            image: Input image (BGR format)
+            bbox: Face bounding box [x1, y1, x2, y2]
             
         Returns:
-            106点坐标数组，形状 (106, 2)
+            106-point coordinates array, shape (106, 2)
         """
         t0 = time.time()
         landmarks = self.landmark_detector.get_landmarks(image, bbox)
@@ -236,13 +236,13 @@ class ModelManager:
     
     def estimate_head_pose(self, face_crop: np.ndarray) -> HeadPoseResult:
         """
-        估计头部姿态
+        Estimate head pose
         
         Args:
-            face_crop: 人脸裁剪图 (BGR格式)
+            face_crop: Face crop image (BGR format)
             
         Returns:
-            HeadPoseResult，包含 pitch, yaw, roll (度)
+            HeadPoseResult, contains pitch, yaw, roll (degrees)
         """
         t0 = time.time()
         result = self.headpose_estimator.estimate(face_crop)
@@ -251,62 +251,62 @@ class ModelManager:
     
     def extract_face_embedding(self, image: np.ndarray, face) -> tuple[np.ndarray, np.ndarray]:
         """
-        从检测到的人脸提取512维特征向量
+        Extract 512-dim feature vector from detected face
         
         Args:
-            image: 输入图像
-            face: RetinaFace 返回的 Face 对象
+            image: Input image
+            face: Face object returned by RetinaFace
             
         Returns:
-            (embedding, aligned_face): 512维特征向量和对齐后的人脸图
+            (embedding, aligned_face): 512-dim feature vector and aligned face image
         """
         import cv2
         from uniface.face_utils import face_alignment
         
-        # 获取5点关键点用于对齐
+        # Get 5-point landmarks for alignment
         landmarks_5 = face.landmarks  # (5, 2)
         
-        # 人脸对齐 (112x112)
+        # Face alignment (112x112)
         aligned_face, _ = face_alignment(image, landmarks_5, image_size=(112, 112))
         
-        # 提取特征向量
+        # Extract feature vector
         embedding = self.extract_embedding(aligned_face, landmarks_5)
         
         return embedding, aligned_face
     
     def full_analysis(self, image: np.ndarray, bbox: np.ndarray) -> dict:
         """
-        完整人脸分析 (一站式获取所有数据)
+        Complete face analysis (one-stop to get all data)
         
         Args:
-            image: 输入图像
-            bbox: 人脸边界框 [x1, y1, x2, y2]
+            image: Input image
+            bbox: Face bounding box [x1, y1, x2, y2]
             
         Returns:
-            包含所有分析结果的字典
+            Dict containing all analysis results
         """
         import cv2
         from uniface.face_utils import face_alignment
         
         x1, y1, x2, y2 = map(int, bbox[:4])
         
-        # 1. 人脸裁剪
+        # 1. Face crop
         face_crop = image[y1:y2, x1:x2]
         if face_crop.size == 0:
             return None
         
-        # 2. 头部姿态
+        # 2. Head pose
         head_pose = self.estimate_head_pose(face_crop)
         
-        # 3. 106点关键点
+        # 3. 106-point landmarks
         landmarks_106 = self.get_landmarks_106(image, bbox)
         
-        # 4. 5点关键点和对齐人脸 (用于识别)
+        # 4. 5-point landmarks and aligned face (for recognition)
         faces = self.detect_faces(image)
         if not faces:
             return None
         
-        # 找对应的face对象
+        # Find corresponding face object
         target_face = None
         for f in faces:
             if np.allclose(f.bbox, bbox, atol=1.0):
@@ -315,7 +315,7 @@ class ModelManager:
         if target_face is None:
             target_face = faces[0]
         
-        # 人脸对齐和特征提取
+        # Face alignment and feature extraction
         embedding, aligned_face = self.extract_face_embedding(image, target_face)
         
         return {
@@ -325,12 +325,12 @@ class ModelManager:
             "landmarks_5": target_face.landmarks,
             "landmarks_106": landmarks_106,
             "head_pose": head_pose,
-            "embedding": embedding,  # 512维特征向量
+            "embedding": embedding,  # 512-dim feature vector
             "confidence": target_face.confidence
         }
     
     def get_system_info(self) -> SystemInfo:
-        """获取系统信息"""
+        """Get system info"""
         info = SystemInfo()
         
         try:
@@ -352,7 +352,7 @@ class ModelManager:
         return info
     
     def get_stats(self) -> dict:
-        """获取模型统计"""
+        """Get model statistics"""
         return {
             "models_loaded": self._models_loaded,
             "total_load_time_ms": round(self._total_load_time_ms, 2),
@@ -375,43 +375,43 @@ class ModelManager:
         }
     
     def warmup(self, iterations: int = 3) -> None:
-        """预热模型"""
+        """Warmup models"""
         import cv2
         
         logger.info(f"Warming up models ({iterations} iterations)...")
         
-        # 创建测试图像
+        # Create test image
         dummy_image = np.zeros((640, 640, 3), dtype=np.uint8)
         
         for i in range(iterations):
-            # 人脸检测
+            # Face detection
             faces = self.detect_faces(dummy_image)
             
             if faces:
                 face = faces[0]
                 bbox = face.bbox
                 
-                # 头部姿态
+                # Head pose
                 x1, y1, x2, y2 = map(int, bbox[:4])
                 face_crop = dummy_image[y1:y2, x1:x2]
                 if face_crop.size > 0:
                     self.estimate_head_pose(face_crop)
                 
-                # 106点
+                # 106-point
                 self.get_landmarks_106(dummy_image, bbox)
                 
-                # 特征提取
+                # Feature extraction
                 self.extract_face_embedding(dummy_image, face)
         
         logger.info("Warmup complete")
     
     @property
     def is_loaded(self) -> bool:
-        """模型是否已加载"""
+        """Model loaded status"""
         return self._models_loaded
     
     def release(self) -> None:
-        """释放模型资源"""
+        """Release model resources"""
         self.detector = None
         self.recognizer = None
         self.landmark_detector = None

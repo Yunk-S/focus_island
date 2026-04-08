@@ -1,7 +1,7 @@
 """
-WebSocket 实时通信服务模块
+WebSocket Real-time Communication Service Module
 
-提供 WebSocket 服务，支持实时推送专注检测结果。
+Provides WebSocket service for real-time focus detection results push.
 
 Author: SSP Team
 """
@@ -26,30 +26,30 @@ logger = logging.getLogger(__name__)
 
 
 class WSMessageType:
-    """WebSocket 消息类型"""
-    # 服务端推送
-    FRAME_RESULT = "frame_result"       # 帧处理结果
-    STATE_CHANGE = "state_change"      # 状态变化
-    SESSION_SUMMARY = "session_summary" # 会话摘要
-    SCORE_UPDATE = "score_update"       # 积分更新
-    MILESTONE = "milestone"             # 里程碑达成
-    SYSTEM_INFO = "system_info"         # 系统信息
-    HEARTBEAT = "heartbeat"             # 心跳
-    ERROR = "error"                     # 错误信息
+    """WebSocket message types"""
+    # Server push
+    FRAME_RESULT = "frame_result"       # Frame processing result
+    STATE_CHANGE = "state_change"      # State change
+    SESSION_SUMMARY = "session_summary" # Session summary
+    SCORE_UPDATE = "score_update"       # Score update
+    MILESTONE = "milestone"             # Milestone reached
+    SYSTEM_INFO = "system_info"         # System info
+    HEARTBEAT = "heartbeat"             # Heartbeat
+    ERROR = "error"                     # Error message
     
-    # 客户端请求
-    START_SESSION = "start_session"     # 开始会话
-    STOP_SESSION = "stop_session"       # 停止会话
-    PAUSE_SESSION = "pause_session"     # 暂停会话
-    RESUME_SESSION = "resume_session"   # 恢复会话
-    RESET_SESSION = "reset_session"      # 重置会话
-    GET_SUMMARY = "get_summary"         # 获取摘要
-    SET_CONFIG = "set_config"           # 设置配置
-    PING = "ping"                      # Ping
+    # Client request
+    START_SESSION = "start_session"     # Start session
+    STOP_SESSION = "stop_session"       # Stop session
+    PAUSE_SESSION = "pause_session"    # Pause session
+    RESUME_SESSION = "resume_session"  # Resume session
+    RESET_SESSION = "reset_session"     # Reset session
+    GET_SUMMARY = "get_summary"         # Get summary
+    SET_CONFIG = "set_config"           # Set config
+    PING = "ping"                       # Ping
 
 
 class WSMessage:
-    """WebSocket 消息封装"""
+    """WebSocket message wrapper"""
     
     def __init__(
         self,
@@ -89,7 +89,7 @@ class WSMessage:
 
 
 class ClientConnection:
-    """客户端连接"""
+    """Client connection"""
     
     def __init__(self, websocket: WebSocketServerProtocol, client_id: str):
         self.websocket = websocket
@@ -99,7 +99,7 @@ class ClientConnection:
         self.is_alive = True
     
     async def send(self, message: WSMessage) -> bool:
-        """发送消息"""
+        """Send message"""
         try:
             await self.websocket.send(message.to_json())
             return True
@@ -109,7 +109,7 @@ class ClientConnection:
             return False
     
     async def receive(self) -> Optional[WSMessage]:
-        """接收消息"""
+        """Receive message"""
         try:
             data = await self.websocket.recv()
             return WSMessage.from_json(data)
@@ -120,7 +120,7 @@ class ClientConnection:
 
 
 class WebSocketServer:
-    """WebSocket 服务器"""
+    """WebSocket Server"""
     
     def __init__(
         self,
@@ -130,25 +130,25 @@ class WebSocketServer:
         heartbeat_interval: int = 30
     ):
         """
-        初始化 WebSocket 服务器
+        Initialize WebSocket Server
         
         Args:
-            host: 监听地址
-            port: 监听端口
-            max_connections: 最大连接数
-            heartbeat_interval: 心跳间隔 (秒)
+            host: Listen address
+            port: Listen port
+            max_connections: Max connections
+            heartbeat_interval: Heartbeat interval (seconds)
         """
         self.host = host
         self.port = port
         self.max_connections = max_connections
         self.heartbeat_interval = heartbeat_interval
         
-        # 连接管理
+        # Connection management
         self._clients: dict[str, ClientConnection] = {}
         self._client_counter = 0
         self._server = None
         
-        # 回调
+        # Callbacks
         self._handlers: dict[str, Callable] = {}
         self._event_handlers: dict[str, list[Callable]] = {
             "state_change": [],
@@ -157,28 +157,28 @@ class WebSocketServer:
             "session_stop": []
         }
         
-        # 任务
+        # Tasks
         self._heartbeat_task: Optional[asyncio.Task] = None
         self._running = False
         
         logger.info(f"WebSocketServer initialized: {host}:{port}")
     
     def register_handler(self, msg_type: str, handler: Callable) -> None:
-        """注册消息处理器"""
+        """Register message handler"""
         self._handlers[msg_type] = handler
         logger.debug(f"Registered handler for {msg_type}")
     
     def register_event_handler(self, event: str, handler: Callable) -> None:
-        """注册事件处理器"""
+        """Register event handler"""
         if event in self._event_handlers:
             self._event_handlers[event].append(handler)
     
     def on_frame_result(self, handler: Callable) -> None:
-        """帧结果回调"""
+        """Frame result callback"""
         self._handlers[WSMessageType.FRAME_RESULT] = handler
     
     def emit_event(self, event: str, data: dict) -> None:
-        """触发事件 (异步)"""
+        """Emit event (async)"""
         if event in self._event_handlers:
             for handler in self._event_handlers[event]:
                 try:
@@ -187,24 +187,24 @@ class WebSocketServer:
                     logger.error(f"Event handler error for {event}: {e}")
     
     async def _handle_client(self, websocket: WebSocketServerProtocol) -> None:
-        """处理客户端连接"""
-        # 生成客户端 ID
+        """Handle client connection"""
+        # Generate client ID
         self._client_counter += 1
         client_id = f"client_{self._client_counter}"
         
-        # 检查连接数
+        # Check connection count
         if len(self._clients) >= self.max_connections:
             logger.warning(f"Max connections reached, rejecting {client_id}")
             await websocket.close(1001, "Max connections reached")
             return
         
-        # 创建连接对象
+        # Create connection object
         client = ClientConnection(websocket, client_id)
         self._clients[client_id] = client
         
         logger.info(f"Client connected: {client_id}, total: {len(self._clients)}")
         
-        # 发送欢迎消息
+        # Send welcome message
         welcome = WSMessage(
             WSMessageType.SYSTEM_INFO,
             data={
@@ -231,13 +231,13 @@ class WebSocketServer:
             logger.info(f"Client removed: {client_id}, remaining: {len(self._clients)}")
     
     async def _process_message(self, client: ClientConnection, message: WSMessage) -> None:
-        """处理消息"""
+        """Process message"""
         msg_type = message.type
         
-        # 更新心跳
+        # Update heartbeat
         client.last_ping = time.time()
         
-        # 查找处理器
+        # Find handler
         handler = self._handlers.get(msg_type)
         if handler:
             try:
@@ -249,22 +249,22 @@ class WebSocketServer:
                 error = WSMessage(WSMessageType.ERROR, error=str(e))
                 await client.send(error)
         else:
-            # 未知消息类型
+            # Unknown message type
             logger.warning(f"Unknown message type: {msg_type}")
     
     async def _heartbeat(self) -> None:
-        """心跳任务"""
+        """Heartbeat task"""
         while self._running:
             await asyncio.sleep(self.heartbeat_interval)
             
-            # 检查所有客户端
+            # Check all clients
             dead_clients = []
             for client_id, client in self._clients.items():
                 if time.time() - client.last_ping > self.heartbeat_interval * 2:
                     logger.warning(f"Client {client_id} heartbeat timeout")
                     dead_clients.append(client_id)
             
-            # 移除超时客户端
+            # Remove timeout clients
             for client_id in dead_clients:
                 try:
                     await self._clients[client_id].websocket.close()
@@ -273,7 +273,7 @@ class WebSocketServer:
                 if client_id in self._clients:
                     del self._clients[client_id]
             
-            # 发送心跳
+            # Send heartbeat
             heartbeat = WSMessage(WSMessageType.HEARTBEAT, data={
                 "server_time": time.time(),
                 "connected_clients": len(self._clients)
@@ -282,7 +282,7 @@ class WebSocketServer:
             await self.broadcast(heartbeat)
     
     async def broadcast(self, message: WSMessage) -> int:
-        """广播消息给所有客户端"""
+        """Broadcast message to all clients"""
         sent_count = 0
         dead_clients: list[str] = []
         for client_id, client in list(self._clients.items()):
@@ -297,19 +297,19 @@ class WebSocketServer:
         return sent_count
     
     async def send_to(self, client_id: str, message: WSMessage) -> bool:
-        """发送给指定客户端"""
+        """Send to specific client"""
         client = self._clients.get(client_id)
         if client:
             return await client.send(message)
         return False
     
     async def broadcast_frame_result(self, result: dict) -> int:
-        """广播帧结果"""
+        """Broadcast frame result"""
         message = WSMessage(WSMessageType.FRAME_RESULT, data=result)
         return await self.broadcast(message)
     
     async def broadcast_state_change(self, old_state: str, new_state: str, reason: str) -> int:
-        """广播状态变化"""
+        """Broadcast state change"""
         message = WSMessage(WSMessageType.STATE_CHANGE, data={
             "old_state": old_state,
             "new_state": new_state,
@@ -318,39 +318,39 @@ class WebSocketServer:
         return await self.broadcast(message)
     
     async def broadcast_milestone(self, milestone: dict) -> int:
-        """广播里程碑"""
+        """Broadcast milestone"""
         message = WSMessage(WSMessageType.MILESTONE, data=milestone)
         return await self.broadcast(message)
     
     async def start(self) -> None:
-        """启动服务器"""
+        """Start server"""
         if self._running:
             logger.warning("Server already running")
             return
         
         self._running = True
         
-        # 启动心跳任务
+        # Start heartbeat task
         self._heartbeat_task = asyncio.create_task(self._heartbeat())
         
-        # 启动服务器
+        # Start server
         self._server = await serve(
             self._handle_client,
             self.host,
             self.port,
-            ping_interval=None  # 禁用自动ping，使用自定义心跳
+            ping_interval=None  # Disable auto-ping, use custom heartbeat
         )
         
         logger.info(f"WebSocket server started: ws://{self.host}:{self.port}")
     
     async def stop(self) -> None:
-        """停止服务器"""
+        """Stop server"""
         if not self._running:
             return
         
         self._running = False
         
-        # 停止心跳
+        # Stop heartbeat
         if self._heartbeat_task:
             self._heartbeat_task.cancel()
             try:
@@ -358,12 +358,12 @@ class WebSocketServer:
             except asyncio.CancelledError:
                 pass
         
-        # 关闭服务器
+        # Close server
         if self._server:
             self._server.close()
             await self._server.wait_closed()
         
-        # 关闭所有客户端
+        # Close all clients
         for client_id, client in list(self._clients.items()):
             try:
                 await client.websocket.close()
@@ -376,17 +376,17 @@ class WebSocketServer:
     
     @property
     def is_running(self) -> bool:
-        """服务器是否运行中"""
+        """Server running status"""
         return self._running
     
     @property
     def client_count(self) -> int:
-        """当前连接数"""
+        """Current connection count"""
         return len(self._clients)
 
 
 class WebSocketClient:
-    """WebSocket 客户端 (用于测试或连接到其他服务器)"""
+    """WebSocket Client (for testing or connecting to other servers)"""
     
     def __init__(
         self,
@@ -396,13 +396,13 @@ class WebSocketClient:
         on_disconnect: Optional[Callable[[], None]] = None
     ):
         """
-        初始化客户端
+        Initialize client
         
         Args:
-            url: 服务器 URL
-            on_message: 消息回调
-            on_connect: 连接回调
-            on_disconnect: 断开回调
+            url: Server URL
+            on_message: Message callback
+            on_connect: Connect callback
+            on_disconnect: Disconnect callback
         """
         self.url = url
         self.on_message = on_message
@@ -414,7 +414,7 @@ class WebSocketClient:
         self._receive_task: Optional[asyncio.Task] = None
     
     async def connect(self) -> bool:
-        """连接服务器"""
+        """Connect to server"""
         try:
             self._websocket = await websockets.connect(self.url)
             self._running = True
@@ -430,7 +430,7 @@ class WebSocketClient:
             return False
     
     async def disconnect(self) -> None:
-        """断开连接"""
+        """Disconnect"""
         self._running = False
         
         if self._receive_task:
@@ -450,7 +450,7 @@ class WebSocketClient:
         logger.info(f"Disconnected from {self.url}")
     
     async def send(self, message: WSMessage) -> bool:
-        """发送消息"""
+        """Send message"""
         if self._websocket:
             try:
                 await self._websocket.send(message.to_json())
@@ -460,12 +460,12 @@ class WebSocketClient:
         return False
     
     async def send_command(self, command: str, data: Optional[dict] = None) -> bool:
-        """发送命令"""
+        """Send command"""
         message = WSMessage(command, data=data)
         return await self.send(message)
     
     async def _receive_loop(self) -> None:
-        """接收消息循环"""
+        """Receive message loop"""
         while self._running and self._websocket:
             try:
                 raw_message = await self._websocket.recv()
@@ -486,10 +486,10 @@ class WebSocketClient:
             self.on_disconnect()
     
     async def start_receiving(self) -> None:
-        """开始接收消息"""
+        """Start receiving messages"""
         self._receive_task = asyncio.create_task(self._receive_loop())
     
     @property
     def is_connected(self) -> bool:
-        """是否已连接"""
+        """Connection status"""
         return self._websocket is not None and self._running

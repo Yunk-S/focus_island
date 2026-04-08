@@ -1,22 +1,7 @@
 /**
  * useWebRTC — WebRTC Mesh peer connection hook for Focus Island Live Mode.
  *
- * Architecture:
- *   - Connects to the room signaling server via WebSocket.
- *   - Manages N peer connections (Mesh / Full-Mesh).
- *   - All video is sent P2P — the signaling server only brokers SDP / ICE.
- *
- * Signaling server: ws://localhost:8766/ws/room
- *
- * Message protocol:
- *   send  { type: 'create_room' | 'join_room' | 'leave_room',
- *           room_id?, user_name? }
- *   recv  { type: 'connected',  client_id }
- *   recv  { type: 'room_created' | 'room_joined', room_id, participants? }
- *   recv  { type: 'participant_joined' | 'participant_left', client_id }
- *   send/recv { type: 'offer' | 'answer', from, sdp }
- *   send/recv { type: 'ice_candidate', from, candidate }
- *   recv  { type: 'room_not_found' | 'room_full' | 'error', message }
+ * Signaling URL from Vite: __FOCUS_ISLAND_ROOM_WS_URL__ (default ws://127.0.0.1:8766/ws/room)
  */
 
 import {
@@ -28,7 +13,6 @@ import {
   useContext,
 } from 'react';
 
-// ─── WebRTC config (STUN only; add TURN for NAT traversal if needed) ───────────
 const RTC_CONFIG = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
@@ -36,47 +20,45 @@ const RTC_CONFIG = {
   ],
 };
 
-// ─── Signaling URL ─────────────────────────────────────────────────────────────
-const SIGNAL_URL = 'ws://localhost:8766/ws/room';
+function getSignalUrl() {
+  if (typeof __FOCUS_ISLAND_ROOM_WS_URL__ !== 'undefined') {
+    return String(__FOCUS_ISLAND_ROOM_WS_URL__);
+  }
+  const p =
+    typeof __FOCUS_ISLAND_ROOM_WS_PORT__ !== 'undefined'
+      ? Number(__FOCUS_ISLAND_ROOM_WS_PORT__)
+      : 8766;
+  return `ws://127.0.0.1:${p}/ws/room`;
+}
 
-// ─── Context ───────────────────────────────────────────────────────────────────
 const WebRTCContext = createContext(null);
 
 export function WebRTCProvider({ children }) {
-  // Signaling socket
   const wsRef = useRef(null);
-  const wsAlive = useRef(false);
+  const myClientIdRef = useRef(null);
+  /** After server sends `connected`, send create_room / join_room (avoids racing OPEN vs connected). */
+  const pendingIntentRef = useRef(null);
+  const connectTimeoutRef = useRef(null);
 
-  // My identity
   const [myClientId, setMyClientId] = useState(null);
   const [myRoomId, setMyRoomId] = useState(null);
   const [userName, setUserName] = useState('');
-
-  // Room participants (excluding self)
   const [participants, setParticipants] = useState([]);
-
-  // Remote video streams  { clientId: MediaStream }
   const [remoteStreams, setRemoteStreams] = useState({});
-
-  // Local camera stream (activated after permission grant)
   const [localStream, setLocalStream] = useState(null);
   const [cameraError, setCameraError] = useState(null);
-
-  // Connection / room state
-  const [signalingState, setSignalingState] = useState('disconnected'); // disconnected | connecting | in_room
+  const [signalingState, setSignalingState] = useState('disconnected');
   const [roomError, setRoomError] = useState(null);
+  const [isHost, setIsHost] = useState(false);
 
-  // Peer connections  { clientId: RTCPeerConnection }
   const peersRef = useRef({});
 
-  // ─── Utility ────────────────────────────────────────────────────────────────
   const sendWs = useCallback((msg) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify(msg));
     }
   }, []);
 
-  // ─── Media ──────────────────────────────────────────────────────────────────
   const requestCamera = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -93,18 +75,16 @@ export function WebRTCProvider({ children }) {
   }, []);
 
   const releaseCamera = useCallback(() => {
-    if (localStream) {
-      localStream.getTracks().forEach((t) => t.stop());
-      setLocalStream(null);
-    }
-  }, [localStream]);
+    setLocalStream((prev) => {
+      if (prev) prev.getTracks().forEach((t) => t.stop());
+      return null;
+    });
+  }, []);
 
-  // Attach a remote stream to a video element (keyed by clientId)
   const attachStream = useCallback((clientId, stream) => {
     setRemoteStreams((prev) => ({ ...prev, [clientId]: stream }));
   }, []);
 
-  // Remove a remote stream
   const detachStream = useCallback((clientId) => {
     setRemoteStreams((prev) => {
       const next = { ...prev };
@@ -113,35 +93,45 @@ export function WebRTCProvider({ children }) {
     });
   }, []);
 
-  // ─── Peer connection factory ────────────────────────────────────────────────
+  const closePeerConnection = useCallback((targetClientId) => {
+    const pc = peersRef.current[targetClientId];
+    if (pc) {
+      pc.ontrack = null;
+      pc.onicecandidate = null;
+      pc.oniceconnectionstatechange = null;
+      try {
+        pc.close();
+      } catch {
+        /* ignore */
+      }
+      delete peersRef.current[targetClientId];
+    }
+  }, []);
+
   const createPeerConnection = useCallback(
     (targetClientId) => {
       if (peersRef.current[targetClientId]) {
-        return peersRef.current[targetClientId]; // reuse
+        return peersRef.current[targetClientId];
       }
 
       const pc = new RTCPeerConnection(RTC_CONFIG);
       peersRef.current[targetClientId] = pc;
 
-      // Add local tracks whenever we get a local stream
       if (localStream) {
         localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
       }
 
-      // ICE candidate → send to signaling server
       pc.onicecandidate = ({ candidate }) => {
         if (candidate) {
           sendWs({ type: 'ice_candidate', target: targetClientId, candidate });
         }
       };
 
-      // Remote track arrived → attach stream
       pc.ontrack = (event) => {
         const [remoteStream] = event.streams;
         if (remoteStream) attachStream(targetClientId, remoteStream);
       };
 
-      // ICE connection state change
       pc.oniceconnectionstatechange = () => {
         if (['disconnected', 'failed', 'closed'].includes(pc.iceConnectionState)) {
           closePeerConnection(targetClientId);
@@ -151,60 +141,63 @@ export function WebRTCProvider({ children }) {
 
       return pc;
     },
-    [localStream, sendWs, attachStream, detachStream]
+    [localStream, sendWs, attachStream, detachStream, closePeerConnection]
   );
 
-  const closePeerConnection = useCallback((targetClientId) => {
-    const pc = peersRef.current[targetClientId];
-    if (pc) {
-      pc.ontrack = null;
-      pc.onicecandidate = null;
-      pc.oniceconnectionstatechange = null;
-      try { pc.close(); } catch { /* ignore */ }
-      delete peersRef.current[targetClientId];
-    }
-  }, []);
-
-  // ─── Signaling message handler ───────────────────────────────────────────────
   const handleSignalingMessage = useCallback(
     async (msg) => {
       const { type } = msg;
 
-      // ── connected → store my client ID ──────────────────────────────────
       if (type === 'connected') {
+        myClientIdRef.current = msg.client_id;
         setMyClientId(msg.client_id);
+
+        const pending = pendingIntentRef.current;
+        pendingIntentRef.current = null;
+        if (pending?.kind === 'create') {
+          sendWs({ type: 'create_room', user_name: pending.userName });
+        } else if (pending?.kind === 'join') {
+          sendWs({
+            type: 'join_room',
+            room_id: pending.roomId,
+            user_name: pending.userName,
+          });
+        }
+        if (connectTimeoutRef.current) {
+          clearTimeout(connectTimeoutRef.current);
+          connectTimeoutRef.current = null;
+        }
         return;
       }
 
-      // ── room_created / room_joined ───────────────────────────────────────
       if (type === 'room_created' || type === 'room_joined') {
         setMyRoomId(msg.room_id);
         setSignalingState('in_room');
         setRoomError(null);
+        if (typeof msg.is_host === 'boolean') {
+          setIsHost(msg.is_host);
+        }
 
-        // Create peer connections with existing participants
         const existing = msg.participants || [];
+        const sid = myClientIdRef.current;
         for (const p of existing) {
-          if (p.client_id === myClientId) continue;
+          if (p.client_id === sid) continue;
           createPeerConnection(p.client_id);
         }
-        setParticipants(existing.filter((p) => p.client_id !== myClientId));
+        setParticipants(existing.filter((p) => p.client_id !== sid));
         return;
       }
 
-      // ── participant_joined ────────────────────────────────────────────────
       if (type === 'participant_joined') {
         const { client_id, user_name } = msg;
+        if (client_id === myClientIdRef.current) return;
 
-        // Create peer connection; wait for caller to send offer
         const pc = createPeerConnection(client_id);
 
-        // If we already have a local stream, add tracks now
         if (localStream) {
           localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
         }
 
-        // Become the offerer ( initiator sends offer to new joiner )
         try {
           const offer = await pc.createOffer();
           await pc.setLocalDescription(offer);
@@ -220,7 +213,6 @@ export function WebRTCProvider({ children }) {
         return;
       }
 
-      // ── participant_left ─────────────────────────────────────────────────
       if (type === 'participant_left') {
         const { client_id } = msg;
         closePeerConnection(client_id);
@@ -229,7 +221,6 @@ export function WebRTCProvider({ children }) {
         return;
       }
 
-      // ── offer → create answer ─────────────────────────────────────────────
       if (type === 'offer') {
         const { from, sdp } = msg;
         const pc = createPeerConnection(from);
@@ -247,7 +238,6 @@ export function WebRTCProvider({ children }) {
         return;
       }
 
-      // ── answer → set remote description ───────────────────────────────────
       if (type === 'answer') {
         const { from, sdp } = msg;
         const pc = peersRef.current[from];
@@ -261,7 +251,6 @@ export function WebRTCProvider({ children }) {
         return;
       }
 
-      // ── ice_candidate → add ICE candidate ──────────────────────────────────
       if (type === 'ice_candidate') {
         const { from, candidate } = msg;
         const pc = peersRef.current[from];
@@ -275,44 +264,64 @@ export function WebRTCProvider({ children }) {
         return;
       }
 
-      // ── room_not_found ─────────────────────────────────────────────────────
       if (type === 'room_not_found') {
         setRoomError(`Room "${msg.room_id}" does not exist.`);
         setSignalingState('disconnected');
         return;
       }
 
-      // ── error ─────────────────────────────────────────────────────────────
       if (type === 'error') {
-        setRoomError(msg.message);
+        setRoomError(msg.message || 'Signaling error');
       }
     },
-    [
-      myClientId,
-      localStream,
-      createPeerConnection,
-      closePeerConnection,
-      detachStream,
-      sendWs,
-    ]
+    [localStream, createPeerConnection, closePeerConnection, detachStream, sendWs]
   );
 
-  // ─── Signaling WebSocket ───────────────────────────────────────────────────
+  const handlerRef = useRef(handleSignalingMessage);
+  handlerRef.current = handleSignalingMessage;
+
   const connectSignaling = useCallback(() => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) return;
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      return;
+    }
+
+    if (wsRef.current) {
+      try {
+        wsRef.current.close();
+      } catch {
+        /* ignore */
+      }
+      wsRef.current = null;
+    }
 
     setSignalingState('connecting');
-    const ws = new WebSocket(SIGNAL_URL);
+    setRoomError(null);
+
+    const url = getSignalUrl();
+    const ws = new WebSocket(url);
     wsRef.current = ws;
 
+    connectTimeoutRef.current = setTimeout(() => {
+      if (wsRef.current === ws && ws.readyState !== WebSocket.OPEN) {
+        setRoomError(
+          'Signaling server unreachable. Start the room server (port 8766) or check firewall.'
+        );
+        setSignalingState('disconnected');
+        try {
+          ws.close();
+        } catch {
+          /* ignore */
+        }
+      }
+    }, 12000);
+
     ws.onopen = () => {
-      wsAlive.current = true;
-      console.log('[WebRTC] Signaling connected');
+      console.log('[WebRTC] Signaling connected', url);
     };
 
     ws.onmessage = (event) => {
       try {
-        handleSignalingMessage(JSON.parse(event.data));
+        handlerRef.current(JSON.parse(event.data));
       } catch (err) {
         console.error('[WebRTC] Failed to parse signaling message:', err);
       }
@@ -324,56 +333,58 @@ export function WebRTCProvider({ children }) {
     };
 
     ws.onclose = () => {
-      wsAlive.current = false;
+      if (connectTimeoutRef.current) {
+        clearTimeout(connectTimeoutRef.current);
+        connectTimeoutRef.current = null;
+      }
       console.log('[WebRTC] Signaling disconnected');
-      setSignalingState('disconnected');
+      setSignalingState((s) => (s === 'in_room' ? s : 'disconnected'));
     };
-  }, [handleSignalingMessage]);
+  }, []);
 
-  // ─── Public actions ──────────────────────────────────────────────────────────
   const createRoom = useCallback(
     (name) => {
-      setUserName(name || 'Host');
+      const uname = name || 'Host';
+      setUserName(uname);
+      pendingIntentRef.current = { kind: 'create', userName: uname };
+      setIsHost(true);
       connectSignaling();
-      // Wait for 'connected' then send create_room
-      const tryCreate = () => {
-        if (wsRef.current?.readyState === WebSocket.OPEN) {
-          sendWs({ type: 'create_room', user_name: name || 'Host' });
-        } else {
-          setTimeout(tryCreate, 100);
-        }
-      };
-      tryCreate();
     },
-    [connectSignaling, sendWs]
+    [connectSignaling]
   );
 
   const joinRoom = useCallback(
     (roomId, name) => {
-      setUserName(name || 'Guest');
-      connectSignaling();
-      const tryJoin = () => {
-        if (wsRef.current?.readyState === WebSocket.OPEN) {
-          sendWs({ type: 'join_room', room_id: roomId, user_name: name || 'Guest' });
-        } else {
-          setTimeout(tryJoin, 100);
-        }
+      const uname = name || 'Guest';
+      setUserName(uname);
+      pendingIntentRef.current = {
+        kind: 'join',
+        roomId: String(roomId || '').trim().toUpperCase(),
+        userName: uname,
       };
-      tryJoin();
+      setIsHost(false);
+      connectSignaling();
     },
-    [connectSignaling, sendWs]
+    [connectSignaling]
   );
 
   const leaveRoom = useCallback(() => {
     sendWs({ type: 'leave_room' });
-    // Close all peer connections
     Object.keys(peersRef.current).forEach((cid) => {
       closePeerConnection(cid);
       detachStream(cid);
     });
     setParticipants([]);
     setMyRoomId(null);
+    myClientIdRef.current = null;
+    setMyClientId(null);
+    setIsHost(false);
     setSignalingState('disconnected');
+    pendingIntentRef.current = null;
+    if (connectTimeoutRef.current) {
+      clearTimeout(connectTimeoutRef.current);
+      connectTimeoutRef.current = null;
+    }
     if (wsRef.current) {
       wsRef.current.close();
       wsRef.current = null;
@@ -381,7 +392,6 @@ export function WebRTCProvider({ children }) {
     releaseCamera();
   }, [sendWs, closePeerConnection, detachStream, releaseCamera]);
 
-  // When local stream becomes available, add tracks to existing peer connections
   useEffect(() => {
     if (!localStream) return;
     Object.values(peersRef.current).forEach((pc) => {
@@ -396,30 +406,46 @@ export function WebRTCProvider({ children }) {
     });
   }, [localStream]);
 
-  // ─── Cleanup on unmount ─────────────────────────────────────────────────────
-  useEffect(() => {
-    return () => {
-      leaveRoom();
-    };
-  }, []);
+  useEffect(
+    () => () => {
+      sendWs({ type: 'leave_room' });
+      Object.keys(peersRef.current).forEach((cid) => {
+        const pc = peersRef.current[cid];
+        if (pc) {
+          try {
+            pc.close();
+          } catch {
+            /* ignore */
+          }
+          delete peersRef.current[cid];
+        }
+      });
+      if (wsRef.current) {
+        try {
+          wsRef.current.close();
+        } catch {
+          /* ignore */
+        }
+        wsRef.current = null;
+      }
+      if (connectTimeoutRef.current) {
+        clearTimeout(connectTimeoutRef.current);
+      }
+    },
+    [sendWs]
+  );
 
   const value = {
-    // Identity
     myClientId,
     myRoomId,
     userName,
     participants,
-
-    // Media
     localStream,
     remoteStreams,
     cameraError,
-
-    // State
     signalingState,
     roomError,
-
-    // Actions
+    isHost,
     requestCamera,
     releaseCamera,
     createRoom,

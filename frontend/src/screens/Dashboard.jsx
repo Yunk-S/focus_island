@@ -113,11 +113,12 @@ function Dashboard() {
   
   const startCamera = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { width: 640, height: 480, facingMode: 'user' } 
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: 640, height: 480, facingMode: 'user' },
       });
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+        await videoRef.current.play().catch(() => {});
       }
     } catch (err) {
       console.error('Failed to start camera:', err);
@@ -312,7 +313,16 @@ function Dashboard() {
                 <span className="text-sm font-medium">{t('dashboard.cameraFeed')}</span>
               </div>
               <button
-                onClick={() => setPrivacyMode(!privacyMode)}
+                type="button"
+                onClick={() => {
+                  if (privacyMode) {
+                    setCameraAgreed(true);
+                    setCameraEnabled(true);
+                    setPrivacyMode(false);
+                  } else {
+                    setPrivacyMode(true);
+                  }
+                }}
                 className="p-2 rounded-lg glass-hover transition-colors"
               >
                 {privacyMode ? (
@@ -368,7 +378,15 @@ function Dashboard() {
             
             {/* Camera Toggle */}
             <button
-              onClick={() => setCameraEnabled(!cameraEnabled)}
+              type="button"
+              onClick={() => {
+                const on = !cameraEnabled;
+                setCameraEnabled(on);
+                if (on) {
+                  setCameraAgreed(true);
+                  setPrivacyMode(false);
+                }
+              }}
               className="mt-4 w-full py-3 rounded-xl glass-hover flex items-center justify-center gap-2 transition-colors"
             >
               {cameraEnabled ? (
@@ -646,7 +664,11 @@ function Dashboard() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
           <div className="relative w-full max-w-sm mx-4 rounded-2xl border border-white/20 bg-white/10 p-8 shadow-2xl backdrop-blur-xl">
             <button
-              onClick={() => setCameraAgreed(false)}
+              type="button"
+              onClick={() => {
+                setCameraAgreed(true);
+                setPrivacyMode(true);
+              }}
               className="absolute right-4 top-4 text-white/50 hover:text-white"
             >
               <X className="size-5" />
@@ -662,13 +684,18 @@ function Dashboard() {
             </p>
             <div className="flex flex-col gap-3">
               <button
+                type="button"
                 onClick={() => setCameraAgreed(true)}
                 className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-primary to-pink-500 py-3 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/25 transition-opacity hover:opacity-90"
               >
                 {t('dashboard.allowCamera')}
               </button>
               <button
-                onClick={() => setCameraAgreed(false)}
+                type="button"
+                onClick={() => {
+                  setCameraAgreed(true);
+                  setPrivacyMode(true);
+                }}
                 className="w-full rounded-xl border border-white/20 py-3 text-center text-sm text-white/60 transition-colors hover:border-white/40 hover:text-white/80"
               >
                 {t('dashboard.cancel')}

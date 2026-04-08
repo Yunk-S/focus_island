@@ -20,6 +20,8 @@ import {
   RefreshCw,
   AlertCircle,
   Wifi,
+  LayoutGrid,
+  Shield,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -201,8 +203,9 @@ function HostScreen({ navigate, onBack }) {
   };
 
   return (
-    <div className="fixed inset-0 flex flex-col bg-background overflow-hidden">
-      <header className="relative z-10 flex items-center px-8 py-5 border-b border-border/20">
+    <div className="fixed inset-0 flex flex-col overflow-hidden bg-[#0b0b10]">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_80%_50%_at_50%_-20%,rgba(120,80,200,0.12),transparent)]" />
+      <header className="relative z-10 flex items-center border-b border-white/10 bg-black/30 px-8 py-5 backdrop-blur-xl">
         <button
           onClick={onBack}
           className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-all"
@@ -228,7 +231,12 @@ function HostScreen({ navigate, onBack }) {
             >
               <RefreshCw className="size-8 animate-spin text-primary" />
               <p className="text-muted-foreground">{t('live.creating')}</p>
-              {roomError && <p className="text-sm text-red-400">{roomError}</p>}
+              {roomError && (
+                <div className="max-w-md text-center">
+                  <p className="text-sm text-red-400">{roomError}</p>
+                  <p className="mt-2 text-xs text-muted-foreground">{t('live.signalingFailed')}</p>
+                </div>
+              )}
             </motion.div>
           ) : !showPermission ? (
             <motion.div
@@ -363,12 +371,13 @@ function JoinRoomScreen({ navigate, onBack }) {
   };
 
   return (
-    <div className="fixed inset-0 flex flex-col bg-background overflow-hidden">
+    <div className="fixed inset-0 flex flex-col overflow-hidden bg-[#0b0b10]">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_80%_50%_at_50%_-20%,rgba(120,80,200,0.12),transparent)]" />
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute top-1/4 right-1/4 size-[400px] rounded-full bg-primary/5 blur-3xl" />
       </div>
 
-      <header className="relative z-10 flex items-center px-8 py-5">
+      <header className="relative z-10 flex items-center border-b border-white/10 bg-black/30 px-8 py-5 backdrop-blur-xl">
         <button
           onClick={onBack}
           className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-all"
@@ -470,15 +479,44 @@ function JoinRoomScreen({ navigate, onBack }) {
 // ─── In-room screen ────────────────────────────────────────────────────────────
 function LiveRoomScreen({ navigate }) {
   const { t } = useI18n();
-  const { myClientId, myRoomId, participants, localStream, remoteStreams, signalingState, leaveRoom, requestCamera, cameraError } = useWebRTC();
+  const {
+    myClientId,
+    myRoomId,
+    participants,
+    localStream,
+    remoteStreams,
+    signalingState,
+    leaveRoom,
+    requestCamera,
+    cameraError,
+    isHost,
+  } = useWebRTC();
   const [copied, setCopied] = useState(false);
+  const [micOn, setMicOn] = useState(true);
+  const [camOn, setCamOn] = useState(true);
+  const [hostToast, setHostToast] = useState(false);
   const localVideoRef = useRef(null);
 
   useEffect(() => {
     if (localStream && localVideoRef.current) {
       localVideoRef.current.srcObject = localStream;
+      localVideoRef.current.play().catch(() => {});
     }
   }, [localStream]);
+
+  useEffect(() => {
+    if (!localStream) return;
+    localStream.getAudioTracks().forEach((track) => {
+      track.enabled = micOn;
+    });
+  }, [localStream, micOn]);
+
+  useEffect(() => {
+    if (!localStream) return;
+    localStream.getVideoTracks().forEach((track) => {
+      track.enabled = camOn;
+    });
+  }, [localStream, camOn]);
 
   const copyCode = () => {
     if (!myRoomId) return;
@@ -493,27 +531,36 @@ function LiveRoomScreen({ navigate }) {
     navigate('/live');
   };
 
+  const handleHostMuteAllReminder = () => {
+    setHostToast(true);
+    setTimeout(() => setHostToast(false), 3200);
+  };
+
   const participantIds = Object.keys(remoteStreams);
 
   return (
-    <div className="fixed inset-0 flex flex-col bg-background overflow-hidden">
-      {/* Header */}
-      <header className="relative z-10 flex items-center justify-between px-6 py-4 border-b border-border/30 bg-card/60 backdrop-blur-xl">
-        <div className="flex items-center gap-3">
-          <div className="flex size-8 items-center justify-center rounded-lg bg-primary/20">
-            <Users className="size-4 text-primary" />
+    <div className="fixed inset-0 flex flex-col overflow-hidden bg-[#0b0b10]">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_80%_50%_at_50%_-20%,rgba(120,80,200,0.12),transparent)]" />
+
+      {/* Top bar — online meeting style */}
+      <header className="relative z-10 flex flex-wrap items-center justify-between gap-3 border-b border-white/10 bg-black/40 px-4 py-3 backdrop-blur-xl md:px-6">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500/30 to-cyan-500/20 ring-1 ring-white/10">
+            <LayoutGrid className="size-5 text-violet-200" />
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="font-mono text-sm font-bold text-foreground">{myRoomId}</span>
-              <button onClick={copyCode} className="text-muted-foreground hover:text-foreground transition-colors">
-                {copied ? <Check className="size-3.5 text-green-400" /> : <Copy className="size-3.5" />}
-              </button>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="truncate font-mono text-base font-semibold tracking-wide text-white md:text-lg">
+                {myRoomId || '—'}
+              </span>
+              <span className="shrink-0 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-emerald-300 ring-1 ring-emerald-500/30">
+                {t('live.meetingLive')}
+              </span>
             </div>
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <div
-                className={`size-1.5 rounded-full ${
-                  signalingState === 'in_room' ? 'bg-green-400' : 'bg-yellow-400 animate-pulse'
+            <div className="mt-0.5 flex items-center gap-2 text-xs text-white/50">
+              <span
+                className={`inline-block size-1.5 rounded-full ${
+                  signalingState === 'in_room' ? 'bg-emerald-400' : 'bg-amber-400'
                 }`}
               />
               {participants.length + 1} {t('live.peopleOnline')}
@@ -521,41 +568,67 @@ function LiveRoomScreen({ navigate }) {
           </div>
         </div>
 
-        <button
-          onClick={handleLeave}
-          className="flex items-center gap-2 rounded-lg bg-red-500/10 px-4 py-2 text-sm font-medium text-red-400 transition-all hover:bg-red-500/20"
-        >
-          <PhoneOff className="size-4" />
-          {t('live.leave')}
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={copyCode}
+            className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-medium text-white/90 transition-colors hover:bg-white/10"
+          >
+            {copied ? <Check className="size-3.5 text-emerald-400" /> : <Copy className="size-3.5" />}
+            {t('live.meetingCopyLink')}
+          </button>
+          {isHost && (
+            <div className="hidden items-center gap-2 rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-100/90 md:flex">
+              <Crown className="size-3.5 text-amber-300" />
+              {t('live.meetingHost')}
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={handleLeave}
+            className="flex items-center gap-2 rounded-xl bg-red-500/15 px-4 py-2 text-sm font-medium text-red-300 ring-1 ring-red-500/30 transition-colors hover:bg-red-500/25"
+          >
+            <PhoneOff className="size-4" />
+            {isHost ? t('live.meetingEndForAll') : t('live.leave')}
+          </button>
+        </div>
       </header>
 
-      {/* Video grid */}
-      <main className="relative z-10 flex-1 overflow-auto p-4">
-        <div className="grid h-full auto-rows-fr grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {/* Local video */}
+      {/* Main stage */}
+      <main className="relative z-10 flex min-h-0 flex-1 flex-col overflow-hidden p-4 md:p-6">
+        <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 auto-rows-fr">
           {localStream ? (
-            <div className="group relative overflow-hidden rounded-2xl border border-border/40 bg-card shadow-xl">
+            <div className="relative flex min-h-[180px] overflow-hidden rounded-2xl border border-white/10 bg-zinc-900/80 shadow-2xl ring-1 ring-white/5">
               <video ref={localVideoRef} autoPlay muted playsInline className="size-full object-cover" />
-              <div className="absolute bottom-3 left-3 rounded-lg bg-black/50 px-2.5 py-1 text-xs font-medium text-white backdrop-blur-sm">
-                {myClientId ? `${t('live.youLabel')} (${myClientId.slice(0, 6)})` : t('live.youLabel')}
+              <div className="absolute bottom-3 left-3 flex max-w-[90%] items-center gap-2 rounded-lg bg-black/55 px-2.5 py-1 text-xs font-medium text-white backdrop-blur-md">
+                {isHost && <Crown className="size-3.5 shrink-0 text-amber-300" />}
+                <span className="truncate">
+                  {t('live.meetingYou')}
+                  {myClientId ? ` · ${myClientId.slice(0, 6)}` : ''}
+                </span>
               </div>
+              {!camOn && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center bg-zinc-950/90">
+                  <VideoOff className="mb-2 size-10 text-white/40" />
+                  <span className="text-xs text-white/50">{t('live.meetingCamOff')}</span>
+                </div>
+              )}
             </div>
           ) : (
-            <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-border/40 bg-card/40 p-8 text-center shadow-xl">
-              <VideoOff className="size-10 text-muted-foreground" />
-              <p className="text-sm text-muted-foreground">{t('live.camOff')}</p>
+            <div className="flex min-h-[180px] flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-white/15 bg-zinc-900/40 p-6 text-center">
+              <VideoOff className="size-10 text-white/30" />
+              <p className="text-sm text-white/50">{t('live.camOff')}</p>
               {cameraError && <p className="text-xs text-red-400">{cameraError}</p>}
               <button
-                onClick={requestCamera}
-                className="rounded-lg bg-primary/10 px-4 py-2 text-xs font-medium text-primary transition-all hover:bg-primary/20"
+                type="button"
+                onClick={() => requestCamera()}
+                className="rounded-xl bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground"
               >
                 {t('live.enableCam')}
               </button>
             </div>
           )}
 
-          {/* Remote videos */}
           <AnimatePresence>
             {participantIds.map((cid) => {
               const stream = remoteStreams[cid];
@@ -564,10 +637,10 @@ function LiveRoomScreen({ navigate }) {
               return (
                 <motion.div
                   key={cid}
-                  initial={{ opacity: 0, scale: 0.9 }}
+                  initial={{ opacity: 0, scale: 0.96 }}
                   animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.9 }}
-                  className="relative overflow-hidden rounded-2xl border border-border/40 bg-card shadow-xl"
+                  exit={{ opacity: 0, scale: 0.96 }}
+                  className="relative min-h-[180px] overflow-hidden rounded-2xl border border-white/10 bg-zinc-900/80 shadow-xl"
                 >
                   <RemoteVideo stream={stream} clientId={cid} userName={p?.user_name} />
                 </motion.div>
@@ -575,16 +648,75 @@ function LiveRoomScreen({ navigate }) {
             })}
           </AnimatePresence>
 
-          {/* Empty placeholder */}
           {participantIds.length === 0 && (
-            <div className="col-span-full flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-border/40 bg-card/20 p-12 text-center">
-              <Users className="size-12 text-muted-foreground/30" />
-              <p className="text-base font-medium text-muted-foreground">{t('live.waitOthers')}</p>
-              <p className="text-sm text-muted-foreground/60">{t('live.shareHint')}</p>
+            <div className="col-span-full flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-white/10 bg-white/[0.02] py-16 text-center">
+              <Users className="size-12 text-white/20" />
+              <p className="text-base font-medium text-white/60">{t('live.waitOthers')}</p>
+              <p className="max-w-sm text-sm text-white/40">{t('live.shareHint')}</p>
             </div>
           )}
         </div>
+
+        {/* Host strip */}
+        {isHost && (
+          <div className="mt-4 flex flex-wrap items-center gap-3 rounded-2xl border border-amber-500/15 bg-amber-500/5 px-4 py-3">
+            <Shield className="size-4 shrink-0 text-amber-400/80" />
+            <span className="text-xs font-medium text-amber-100/80">{t('live.meetingHostOnly')}</span>
+            <button
+              type="button"
+              onClick={handleHostMuteAllReminder}
+              className="ml-auto rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-white/80 transition-colors hover:bg-white/10"
+            >
+              {t('live.meetingMuteAllHint')}
+            </button>
+          </div>
+        )}
+        {hostToast && (
+          <div className="pointer-events-none fixed bottom-24 left-1/2 z-50 -translate-x-1/2 rounded-xl border border-white/10 bg-zinc-900/95 px-4 py-2 text-xs text-white/90 shadow-xl">
+            {t('live.meetingMuteAllHint')} ✓
+          </div>
+        )}
       </main>
+
+      {/* Bottom toolbar */}
+      <footer className="relative z-10 border-t border-white/10 bg-black/50 px-4 py-4 backdrop-blur-xl">
+        <div className="mx-auto flex max-w-3xl items-center justify-center gap-3 md:gap-4">
+          <button
+            type="button"
+            onClick={() => setMicOn((m) => !m)}
+            disabled={!localStream}
+            className={`flex size-12 items-center justify-center rounded-full border transition-colors ${
+              micOn
+                ? 'border-white/15 bg-white/10 text-white hover:bg-white/15'
+                : 'border-red-500/40 bg-red-500/20 text-red-200'
+            } disabled:opacity-40`}
+            title={micOn ? t('live.meetingMicOn') : t('live.meetingMicOff')}
+          >
+            {micOn ? <Mic className="size-5" /> : <MicOff className="size-5" />}
+          </button>
+          <button
+            type="button"
+            onClick={() => setCamOn((c) => !c)}
+            disabled={!localStream}
+            className={`flex size-12 items-center justify-center rounded-full border transition-colors ${
+              camOn
+                ? 'border-white/15 bg-white/10 text-white hover:bg-white/15'
+                : 'border-amber-500/40 bg-amber-500/15 text-amber-100'
+            } disabled:opacity-40`}
+            title={camOn ? t('live.meetingCamOn') : t('live.meetingCamOff')}
+          >
+            {camOn ? <Video className="size-5" /> : <VideoOff className="size-5" />}
+          </button>
+          <button
+            type="button"
+            onClick={handleLeave}
+            className="flex size-14 items-center justify-center rounded-full bg-red-600 text-white shadow-lg shadow-red-600/30 transition-transform hover:scale-105 active:scale-95"
+            title={t('live.leave')}
+          >
+            <PhoneOff className="size-6" />
+          </button>
+        </div>
+      </footer>
     </div>
   );
 }

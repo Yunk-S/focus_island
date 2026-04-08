@@ -19,6 +19,23 @@ function readBackendWsPort() {
 
 const focusIslandWsPort = readBackendWsPort();
 
+function readRoomWsPort() {
+  try {
+    const p = path.resolve(__dirname, '..', '.focus_island_ports.json');
+    if (fs.existsSync(p)) {
+      const j = JSON.parse(fs.readFileSync(p, 'utf8'));
+      const n = Number(j.room_ws_port);
+      if (Number.isFinite(n) && n > 0) return n;
+    }
+  } catch {
+    /* ignore */
+  }
+  return 8766;
+}
+
+const focusIslandRoomWsPort = readRoomWsPort();
+const focusIslandRoomWsUrl = `ws://127.0.0.1:${focusIslandRoomWsPort}/ws/room`;
+
 export default defineConfig({
   plugins: [react()],
   base: './',
@@ -42,5 +59,7 @@ export default defineConfig({
   },
   define: {
     __FOCUS_ISLAND_WS_PORT__: JSON.stringify(focusIslandWsPort),
+    __FOCUS_ISLAND_ROOM_WS_PORT__: JSON.stringify(focusIslandRoomWsPort),
+    __FOCUS_ISLAND_ROOM_WS_URL__: JSON.stringify(focusIslandRoomWsUrl),
   },
 });

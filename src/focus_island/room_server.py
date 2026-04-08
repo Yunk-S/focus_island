@@ -182,10 +182,15 @@ async def room_ws(websocket: WebSocket):
                 rooms[new_room].append(websocket)
                 meta["room_id"] = new_room
                 meta["user_name"] = user_name
+                meta["is_host"] = True
                 logger.info(f"[Room] {client_id} created room {new_room}")
                 await websocket.send_json({
                     "type": "room_created",
                     "room_id": new_room,
+                    "participants": [
+                        {"client_id": client_id, "user_name": user_name},
+                    ],
+                    "is_host": True,
                 })
 
             # ── join_room ─────────────────────────────────────────────────────
@@ -200,16 +205,16 @@ async def room_ws(websocket: WebSocket):
                     await websocket.send_json({"type": "room_not_found", "room_id": target_room})
                     continue
 
-                # Leave previous room if any
+                # Leave previous room if any (re-register websocket in user_meta after _disconnect)
                 if room_id:
                     _disconnect(websocket)
-                    # Re-fetch list after disconnect
-                    if target_room in rooms:
-                        rooms[target_room].append(websocket)
+                    user_meta[websocket] = meta
 
-                rooms[target_room].append(websocket)
+                if websocket not in rooms[target_room]:
+                    rooms[target_room].append(websocket)
                 meta["room_id"] = target_room
                 meta["user_name"] = user_name
+                meta["is_host"] = False
 
                 participants = [
                     {"client_id": user_meta[w].get("client_id"), "user_name": user_meta[w].get("user_name", "?")}
@@ -223,6 +228,7 @@ async def room_ws(websocket: WebSocket):
                     "type": "room_joined",
                     "room_id": target_room,
                     "participants": participants,
+                    "is_host": False,
                 })
                 # Notify others
                 _broadcast(target_room, {

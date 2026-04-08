@@ -54,6 +54,10 @@ app.add_middleware(
 # user_meta: dict[WebSocket, dict]   — stores { "room_id", "user_name", "joined_at" }
 rooms: dict[str, list[WebSocket]] = {}
 user_meta: dict[WebSocket, dict] = {}
+focus_data: dict[str, dict] = {}  # room_id → { client_id: {ear, state, focus_time, points, hand_up} }
+chat_history: dict[str, list[dict]] = {}  # room_id → [{from, user_name, text, ts}]
+# Only keep last 200 messages per room
+MAX_CHAT_HISTORY = 200
 
 # ──────────────────────────────────────────────────────────────────────────────
 #  Helpers
@@ -78,22 +82,43 @@ def _broadcast(room_id: str, payload: dict, exclude: WebSocket | None = None) ->
             asyncio.create_task(ws.send_json(payload))
         except Exception:
             dead.append(ws)
-    # prune dead connections
     for ws in dead:
         _disconnect(ws)
+
+
+def _send_to(ws: WebSocket, payload: dict) -> None:
+    """Send JSON payload to a single client."""
+    try:
+        asyncio.create_task(ws.send_json(payload))
+    except Exception:
+        pass
 
 
 def _disconnect(ws: WebSocket) -> None:
     """Remove a client from its room and clean up empty rooms."""
     meta = user_meta.pop(ws, {})
     room_id = meta.get("room_id")
+    cid = meta.get("client_id")
     if room_id and room_id in rooms:
         try:
             rooms[room_id].remove(ws)
         except ValueError:
             pass
+        # Broadcast hand_down when participant leaves
+        if cid and room_id in rooms:
+            for peer in rooms[room_id]:
+                _send_to(peer, {
+                    "type": "hand_raise",
+                    "from": cid,
+                    "user_name": meta.get("user_name", "?"),
+                    "raised": False,
+                })
         if not rooms[room_id]:
             del rooms[room_id]
+            if room_id in chat_history:
+                del chat_history[room_id]
+            if room_id in focus_data:
+                del focus_data[room_id]
             logger.info(f"[Room] Deleted empty room: {room_id}")
 
 
@@ -130,7 +155,7 @@ async def room_info(room_id: str):
 # ──────────────────────────────────────────────────────────────────────────────
 #  WebSocket endpoint  /ws/room
 #
-#  Client message protocol (client → server):
+#  Client → Server message types:
 #    { "type": "create_room",   "user_name": "Alex" }
 #    { "type": "join_room",     "room_id": "ABC123", "user_name": "Emma" }
 #    { "type": "leave_room" }
@@ -138,17 +163,25 @@ async def room_info(room_id: str):
 #    { "type": "answer",        "target": "client_id", "sdp": {...} }
 #    { "type": "ice_candidate", "target": "client_id", "candidate": {...} }
 #    { "type": "chat",          "text": "hello" }
+#    { "type": "reaction",       "reaction": "thumbsup" | "clap" | "heart" | "hand" }
+#    { "type": "hand_raise",     "raised": true | false }
+#    { "type": "focus_update",    "focus_state": "focused"|"warning"|"idle", "ear": 0.28, "focus_time": 120, "points": 50 }
+#    { "type": "get_chat_history" }
+#    { "type": "get_focus_data" }
 #
-#  Server message protocol (server → client):
-#    { "type": "room_created",  "room_id": "ABC123" }
-#    { "type": "room_joined",   "room_id": "ABC123", "participants": [...] }
+#  Server → Client message types:
+#    { "type": "room_created",  "room_id": "ABC123", "participants": [...], "is_host": bool }
+#    { "type": "room_joined",   "room_id": "ABC123", "participants": [...], "is_host": bool }
 #    { "type": "participant_joined",  "user_name": "Emma", "client_id": "..." }
 #    { "type": "participant_left",    "client_id": "..." }
-#    { "type": "offer",         "from": "client_id", "sdp": {...} }
-#    { "type": "answer",        "from": "client_id", "sdp": {...} }
-#    { "type": "ice_candidate", "from": "client_id", "candidate": {...} }
-#    { "type": "chat",          "from": "client_id", "text": "hello", "ts": 123 }
-#    { "type": "room_full" | "room_not_found" | "error", "message": "..." }
+#    { "type": "offer"|"answer"|"ice_candidate", "from": "client_id", ... }
+#    { "type": "chat",  "from": "client_id", "user_name": "?", "text": "...", "ts": float }
+#    { "type": "reaction", "from": "client_id", "user_name": "?", "reaction": "thumbsup" }
+#    { "type": "hand_raise", "from": "client_id", "user_name": "?", "raised": true }
+#    { "type": "focus_update", "from": "client_id", "user_name": "?", "focus_state": "...", "ear": 0.28, "focus_time": 120, "points": 50 }
+#    { "type": "chat_history", "messages": [...] }
+#    { "type": "focus_data", "data": { "client_id": {focus_state,ear,focus_time,points,hand_up} } }
+#    { "type": "room_not_found"|"error", "message": "..." }
 # ──────────────────────────────────────────────────────────────────────────────
 
 @app.websocket("/ws/room")
@@ -272,13 +305,102 @@ async def room_ws(websocket: WebSocket):
             elif msg_type == "chat":
                 text = str(msg.get("text", ""))[:500]
                 if room_id and text:
-                    _broadcast(room_id, {
+                    chat_entry = {
                         "type": "chat",
                         "from": client_id,
                         "user_name": meta.get("user_name", "?"),
                         "text": text,
                         "ts": time.time(),
-                    }, exclude=websocket)
+                    }
+                    # Store in history (up to MAX_CHAT_HISTORY per room)
+                    if room_id not in chat_history:
+                        chat_history[room_id] = []
+                    chat_history[room_id].append(chat_entry)
+                    if len(chat_history[room_id]) > MAX_CHAT_HISTORY:
+                        chat_history[room_id] = chat_history[room_id][-MAX_CHAT_HISTORY:]
+                    # Echo to sender + broadcast to others
+                    _send_to(websocket, chat_entry)
+                    _broadcast(room_id, chat_entry, exclude=websocket)
+
+            # ── reaction ──────────────────────────────────────────────────────
+            elif msg_type == "reaction":
+                reaction = str(msg.get("reaction", ""))[:20]
+                if room_id and reaction in ("thumbsup", "clap", "heart", "laugh"):
+                    payload = {
+                        "type": "reaction",
+                        "from": client_id,
+                        "user_name": meta.get("user_name", "?"),
+                        "reaction": reaction,
+                        "ts": time.time(),
+                    }
+                    # Broadcast to all including sender so they see their own reaction
+                    if room_id in rooms:
+                        for ws in rooms[room_id]:
+                            _send_to(ws, payload)
+
+            # ── hand_raise ───────────────────────────────────────────────────
+            elif msg_type == "hand_raise":
+                raised = bool(msg.get("raised", False))
+                if room_id:
+                    # Update focus_data for this room/client
+                    if room_id not in focus_data:
+                        focus_data[room_id] = {}
+                    if client_id not in focus_data[room_id]:
+                        focus_data[room_id][client_id] = {}
+                    focus_data[room_id][client_id]["hand_up"] = raised
+                    focus_data[room_id][client_id]["user_name"] = meta.get("user_name", "?")
+                    payload = {
+                        "type": "hand_raise",
+                        "from": client_id,
+                        "user_name": meta.get("user_name", "?"),
+                        "raised": raised,
+                    }
+                    if room_id in rooms:
+                        for ws in rooms[room_id]:
+                            _send_to(ws, payload)
+
+            # ── focus_update ─────────────────────────────────────────────────
+            elif msg_type == "focus_update":
+                if room_id:
+                    focus_state_val = str(msg.get("focus_state", "idle"))[:20]
+                    ear = float(msg.get("ear", 0))
+                    focus_time = int(msg.get("focus_time", 0))
+                    points = int(msg.get("points", 0))
+                    if room_id not in focus_data:
+                        focus_data[room_id] = {}
+                    focus_data[room_id][client_id] = {
+                        "focus_state": focus_state_val,
+                        "ear": ear,
+                        "focus_time": focus_time,
+                        "points": points,
+                        "hand_up": focus_data[room_id].get(client_id, {}).get("hand_up", False),
+                        "user_name": meta.get("user_name", "?"),
+                        "last_update": time.time(),
+                    }
+                    payload = {
+                        "type": "focus_update",
+                        "from": client_id,
+                        "user_name": meta.get("user_name", "?"),
+                        "focus_state": focus_state_val,
+                        "ear": ear,
+                        "focus_time": focus_time,
+                        "points": points,
+                    }
+                    if room_id in rooms:
+                        for ws in rooms[room_id]:
+                            _send_to(ws, payload)
+
+            # ── get_chat_history ──────────────────────────────────────────────
+            elif msg_type == "get_chat_history":
+                if room_id:
+                    history = list(chat_history.get(room_id, []))
+                    await websocket.send_json({"type": "chat_history", "messages": history})
+
+            # ── get_focus_data ────────────────────────────────────────────────
+            elif msg_type == "get_focus_data":
+                if room_id:
+                    data = dict(focus_data.get(room_id, {}))
+                    await websocket.send_json({"type": "focus_data", "data": data})
 
             # ── ping / pong ───────────────────────────────────────────────────
             elif msg_type == "ping":

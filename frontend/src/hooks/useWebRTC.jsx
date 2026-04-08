@@ -1,7 +1,18 @@
 /**
- * useWebRTC — WebRTC Mesh peer connection hook for Focus Island Live Mode.
+ * useWebRTC — WebRTC Mesh peer connection + Focus Island room signaling hook.
  *
- * Signaling URL from Vite: __FOCUS_ISLAND_ROOM_WS_URL__ (default ws://127.0.0.1:8766/ws/room)
+ * Handles: WebRTC mesh peer connections (video/audio P2P) via signaling server,
+ *          and room-level data: chat, reactions, hand-raise, focus scores.
+ *
+ * Signaling server: read from Vite define: __FOCUS_ISLAND_ROOM_WS_URL__
+ *  (falls back to ws://127.0.0.1:8766/ws/room)
+ *
+ * Message protocol:
+ *  send  create_room / join_room / leave_room / offer / answer / ice_candidate
+ *        chat / reaction / hand_raise / focus_update / get_chat_history / get_focus_data
+ *  recv  connected / room_created / room_joined / participant_joined / participant_left /
+ *        offer / answer / ice_candidate / chat / chat_history /
+ *        reaction / hand_raise / focus_update / focus_data / room_not_found / error
  */
 
 import {
@@ -36,7 +47,6 @@ const WebRTCContext = createContext(null);
 export function WebRTCProvider({ children }) {
   const wsRef = useRef(null);
   const myClientIdRef = useRef(null);
-  /** After server sends `connected`, send create_room / join_room (avoids racing OPEN vs connected). */
   const pendingIntentRef = useRef(null);
   const connectTimeoutRef = useRef(null);
 
@@ -50,6 +60,11 @@ export function WebRTCProvider({ children }) {
   const [signalingState, setSignalingState] = useState('disconnected');
   const [roomError, setRoomError] = useState(null);
   const [isHost, setIsHost] = useState(false);
+
+  // ── Room data ────────────────────────────────────────────────────────────────
+  const [chatMessages, setChatMessages] = useState([]);
+  const [reactions, setReactions] = useState([]); // [{from, user_name, reaction, ts}]
+  const [focusData, setFocusData] = useState({}); // { clientId: {focus_state, ear, focus_time, points, hand_up, user_name} }
 
   const peersRef = useRef({});
 
@@ -99,11 +114,7 @@ export function WebRTCProvider({ children }) {
       pc.ontrack = null;
       pc.onicecandidate = null;
       pc.oniceconnectionstatechange = null;
-      try {
-        pc.close();
-      } catch {
-        /* ignore */
-      }
+      try { pc.close(); } catch { /* ignore */ }
       delete peersRef.current[targetClientId];
     }
   }, []);
@@ -144,6 +155,23 @@ export function WebRTCProvider({ children }) {
     [localStream, sendWs, attachStream, detachStream, closePeerConnection]
   );
 
+  // ── Reaction auto-cleanup ─────────────────────────────────────────────────
+  const reactionTimeoutsRef = useRef({});
+  const addReaction = useCallback((entry) => {
+    setReactions((prev) => {
+      const next = [...prev, entry];
+      return next.length > 30 ? next.slice(-30) : next;
+    });
+    // Remove after 4 s
+    const id = entry.ts;
+    if (reactionTimeoutsRef.current[id]) clearTimeout(reactionTimeoutsRef.current[id]);
+    reactionTimeoutsRef.current[id] = setTimeout(() => {
+      setReactions((prev) => prev.filter((r) => r.ts !== id));
+      delete reactionTimeoutsRef.current[id];
+    }, 4000);
+  }, []);
+
+  // ── Signaling handler ──────────────────────────────────────────────────────
   const handleSignalingMessage = useCallback(
     async (msg) => {
       const { type } = msg;
@@ -218,6 +246,11 @@ export function WebRTCProvider({ children }) {
         closePeerConnection(client_id);
         detachStream(client_id);
         setParticipants((prev) => prev.filter((p) => p.client_id !== client_id));
+        setFocusData((prev) => {
+          const next = { ...prev };
+          delete next[client_id];
+          return next;
+        });
         return;
       }
 
@@ -264,6 +297,59 @@ export function WebRTCProvider({ children }) {
         return;
       }
 
+      // ── Room data ────────────────────────────────────────────��───────────
+      if (type === 'chat') {
+        setChatMessages((prev) => {
+          const next = [...prev, msg];
+          return next.length > 200 ? next.slice(-200) : next;
+        });
+        return;
+      }
+
+      if (type === 'chat_history') {
+        setChatMessages(Array.isArray(msg.messages) ? msg.messages : []);
+        return;
+      }
+
+      if (type === 'reaction') {
+        addReaction(msg);
+        return;
+      }
+
+      if (type === 'hand_raise') {
+        const { from, user_name, raised } = msg;
+        setFocusData((prev) => ({
+          ...prev,
+          [from]: {
+            ...(prev[from] || {}),
+            hand_up: raised,
+            user_name: user_name || prev[from]?.user_name,
+          },
+        }));
+        return;
+      }
+
+      if (type === 'focus_update') {
+        const { from, user_name, focus_state, ear, focus_time, points } = msg;
+        setFocusData((prev) => ({
+          ...prev,
+          [from]: {
+            ...(prev[from] || {}),
+            focus_state: focus_state || 'idle',
+            ear: ear || 0,
+            focus_time: focus_time || 0,
+            points: points || 0,
+            user_name: user_name || prev[from]?.user_name,
+          },
+        }));
+        return;
+      }
+
+      if (type === 'focus_data') {
+        setFocusData(typeof msg.data === 'object' && msg.data ? msg.data : {});
+        return;
+      }
+
       if (type === 'room_not_found') {
         setRoomError(`Room "${msg.room_id}" does not exist.`);
         setSignalingState('disconnected');
@@ -274,7 +360,14 @@ export function WebRTCProvider({ children }) {
         setRoomError(msg.message || 'Signaling error');
       }
     },
-    [localStream, createPeerConnection, closePeerConnection, detachStream, sendWs]
+    [
+      localStream,
+      createPeerConnection,
+      closePeerConnection,
+      detachStream,
+      sendWs,
+      addReaction,
+    ]
   );
 
   const handlerRef = useRef(handleSignalingMessage);
@@ -286,11 +379,7 @@ export function WebRTCProvider({ children }) {
     }
 
     if (wsRef.current) {
-      try {
-        wsRef.current.close();
-      } catch {
-        /* ignore */
-      }
+      try { wsRef.current.close(); } catch { /* ignore */ }
       wsRef.current = null;
     }
 
@@ -307,11 +396,7 @@ export function WebRTCProvider({ children }) {
           'Signaling server unreachable. Start the room server (port 8766) or check firewall.'
         );
         setSignalingState('disconnected');
-        try {
-          ws.close();
-        } catch {
-          /* ignore */
-        }
+        try { ws.close(); } catch { /* ignore */ }
       }
     }, 12000);
 
@@ -381,6 +466,9 @@ export function WebRTCProvider({ children }) {
     setIsHost(false);
     setSignalingState('disconnected');
     pendingIntentRef.current = null;
+    setChatMessages([]);
+    setReactions([]);
+    setFocusData({});
     if (connectTimeoutRef.current) {
       clearTimeout(connectTimeoutRef.current);
       connectTimeoutRef.current = null;
@@ -392,6 +480,51 @@ export function WebRTCProvider({ children }) {
     releaseCamera();
   }, [sendWs, closePeerConnection, detachStream, releaseCamera]);
 
+  // ── Room data actions ──────────────────────────────────────────────────────
+  const sendChatMessage = useCallback(
+    (text) => {
+      if (!text?.trim()) return;
+      sendWs({ type: 'chat', text: text.trim() });
+    },
+    [sendWs]
+  );
+
+  const sendReaction = useCallback(
+    (reaction) => {
+      sendWs({ type: 'reaction', reaction });
+    },
+    [sendWs]
+  );
+
+  const sendHandRaise = useCallback(
+    (raised) => {
+      sendWs({ type: 'hand_raise', raised });
+    },
+    [sendWs]
+  );
+
+  const sendFocusUpdate = useCallback(
+    (focus_state, ear, focus_time, points) => {
+      sendWs({
+        type: 'focus_update',
+        focus_state: String(focus_state || 'idle'),
+        ear: Number(ear || 0),
+        focus_time: Number(focus_time || 0),
+        points: Number(points || 0),
+      });
+    },
+    [sendWs]
+  );
+
+  const getChatHistory = useCallback(() => {
+    sendWs({ type: 'get_chat_history' });
+  }, [sendWs]);
+
+  const getFocusData = useCallback(() => {
+    sendWs({ type: 'get_focus_data' });
+  }, [sendWs]);
+
+  // ── When local stream becomes available ─────────────────────────────────
   useEffect(() => {
     if (!localStream) return;
     Object.values(peersRef.current).forEach((pc) => {
@@ -406,36 +539,36 @@ export function WebRTCProvider({ children }) {
     });
   }, [localStream]);
 
+  // ── Cleanup on unmount ────────────────────────────────────────────────────
   useEffect(
     () => () => {
       sendWs({ type: 'leave_room' });
       Object.keys(peersRef.current).forEach((cid) => {
         const pc = peersRef.current[cid];
         if (pc) {
-          try {
-            pc.close();
-          } catch {
-            /* ignore */
-          }
+          try { pc.close(); } catch { /* ignore */ }
           delete peersRef.current[cid];
         }
       });
       if (wsRef.current) {
-        try {
-          wsRef.current.close();
-        } catch {
-          /* ignore */
-        }
+        try { wsRef.current.close(); } catch { /* ignore */ }
         wsRef.current = null;
       }
-      if (connectTimeoutRef.current) {
-        clearTimeout(connectTimeoutRef.current);
-      }
+      if (connectTimeoutRef.current) clearTimeout(connectTimeoutRef.current);
     },
     [sendWs]
   );
 
+  // ── On entering room: request history + focus data ─────────────────────────
+  useEffect(() => {
+    if (signalingState === 'in_room') {
+      getChatHistory();
+      getFocusData();
+    }
+  }, [signalingState]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const value = {
+    // Identity
     myClientId,
     myRoomId,
     userName,
@@ -446,11 +579,24 @@ export function WebRTCProvider({ children }) {
     signalingState,
     roomError,
     isHost,
+
+    // Room data
+    chatMessages,
+    reactions,
+    focusData,
+
+    // Actions
     requestCamera,
     releaseCamera,
     createRoom,
     joinRoom,
     leaveRoom,
+    sendChatMessage,
+    sendReaction,
+    sendHandRaise,
+    sendFocusUpdate,
+    getChatHistory,
+    getFocusData,
   };
 
   return <WebRTCContext.Provider value={value}>{children}</WebRTCContext.Provider>;

@@ -542,8 +542,8 @@ function LoginPage() {
       <div className="flex items-center justify-center bg-background p-8">
         <div className="w-full max-w-[420px]">
           <div className="mb-12 flex items-center justify-center gap-2 text-lg font-semibold lg:hidden">
-            <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10">
-              <Sparkles className="size-4 text-primary" />
+            <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary/80 to-pink-500/80">
+              <IslandIcon className="size-6 text-white" />
             </div>
             <span>{t('login.brand')}</span>
           </div>
@@ -625,7 +625,7 @@ function LoginPage() {
               onClick={handleDemoLogin}
               disabled={isLoading}
             >
-              <Sparkles className="mr-2 size-5" />
+              <IslandIcon className="mr-2 size-5" />
               {t('login.demoAccount')}
             </Button>
             <Button

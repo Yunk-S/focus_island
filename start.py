@@ -67,6 +67,10 @@ VENV = ROOT / ".venv"
 VENV_PY = VENV / "Scripts" / "python.exe"
 FRONTEND = ROOT / "frontend"
 
+# Windows default locale (e.g. GBK) breaks when merging Node/Vite logs (UTF-8).
+SUBPROC_TEXT_ENCODING = "utf-8"
+SUBPROC_TEXT_ERRORS = "replace"
+
 
 def resolve_py() -> Path:
     """Return the virtual-environment Python, falling back to system python."""
@@ -107,6 +111,9 @@ class Processes:
         full_env = dict(os.environ)
         if set_pythonpath:
             full_env["PYTHONPATH"] = str(ROOT / "src")
+        # Align Python child processes with pipe decoding (avoids mixed encodings on Windows).
+        full_env.setdefault("PYTHONUTF8", "1")
+        full_env.setdefault("PYTHONIOENCODING", "utf-8")
         if env:
             full_env.update(env)
 
@@ -118,6 +125,8 @@ class Processes:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
+                encoding=SUBPROC_TEXT_ENCODING,
+                errors=SUBPROC_TEXT_ERRORS,
                 bufsize=1,
                 creationflags=subprocess.CREATE_NEW_PROCESS_GROUP
                 if os.name == "nt"
@@ -199,9 +208,22 @@ def start_frontend(p: Processes) -> None:
     if not nm.is_dir():
         warn("frontend/node_modules missing; running npm install...")
         if os.name == "nt":
-            r = subprocess.run("npm install", cwd=str(FRONTEND), shell=True, text=True)
+            r = subprocess.run(
+                "npm install",
+                cwd=str(FRONTEND),
+                shell=True,
+                text=True,
+                encoding=SUBPROC_TEXT_ENCODING,
+                errors=SUBPROC_TEXT_ERRORS,
+            )
         else:
-            r = subprocess.run(["npm", "install"], cwd=str(FRONTEND), text=True)
+            r = subprocess.run(
+                ["npm", "install"],
+                cwd=str(FRONTEND),
+                text=True,
+                encoding=SUBPROC_TEXT_ENCODING,
+                errors=SUBPROC_TEXT_ERRORS,
+            )
         if r.returncode != 0:
             warn("npm install failed; check Node.js and network.")
         else:

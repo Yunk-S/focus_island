@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../hooks/useAuth';
 import { useBackend } from '../hooks/useBackend';
+import { useI18n } from '../i18n/I18nContext';
 import {
   ArrowLeft,
   Play,
@@ -33,6 +34,7 @@ const FOCUS_DURATIONS = [15, 25, 45, 60]; // minutes
 
 function AmbientModePage() {
   const navigate = useNavigate();
+  const { t } = useI18n();
   const { user, updatePoints, updateStreak } = useAuth();
   const {
     sessionState,
@@ -235,7 +237,7 @@ function AmbientModePage() {
           className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-all"
         >
           <ArrowLeft className="size-4" />
-          <span>返回个人页</span>
+          <span>{t('dashboard.backPersonal')}</span>
         </button>
 
         <div className="flex items-center gap-6 text-sm">
@@ -243,17 +245,17 @@ function AmbientModePage() {
           <div className="flex items-center gap-1.5 text-muted-foreground">
             <Zap className="size-4 text-primary" />
             <span className="font-medium text-foreground">{totalPoints}</span>
-            <span className="hidden sm:inline">积分</span>
+            <span className="hidden sm:inline">{t('dashboard.points')}</span>
           </div>
           <div className="flex items-center gap-1.5 text-muted-foreground">
             <Clock className="size-4 text-primary" />
             <span className="font-medium text-foreground">{todayFocusTime}</span>
-            <span className="hidden sm:inline">分钟</span>
+            <span className="hidden sm:inline">{t('dashboard.min')}</span>
           </div>
           <div className="flex items-center gap-1.5 text-muted-foreground">
             <CheckCircle2 className="size-4 text-primary" />
             <span className="font-medium text-foreground">{sessionCount}</span>
-            <span className="hidden sm:inline">次专注</span>
+            <span className="hidden sm:inline">{t('dashboard.sessions')}</span>
           </div>
         </div>
 
@@ -263,7 +265,7 @@ function AmbientModePage() {
             className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-all"
           >
             {privacyMode ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-            <span>{privacyMode ? '隐私模式' : '摄像头'}</span>
+            <span>{privacyMode ? t('dashboard.privacyMode') : t('dashboard.cameraMode')}</span>
           </button>
         </div>
       </header>
@@ -289,7 +291,7 @@ function AmbientModePage() {
                       : 'bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground'
                   }`}
                 >
-                  {d} 分钟
+                  {t('dashboard.durations', { n: d })}
                 </button>
               ))}
             </motion.div>
@@ -343,10 +345,10 @@ function AmbientModePage() {
                 {formatTime(timeLeft)}
               </div>
               <div className="text-sm text-muted-foreground">
-                {focusState === FOCUS_STATES.IDLE && '准备开始'}
-                {focusState === FOCUS_STATES.FOCUSING && (hasFace ? '专注中...' : '请保持在镜头前')}
-                {focusState === FOCUS_STATES.PAUSED && '已暂停'}
-                {focusState === FOCUS_STATES.COMPLETED && '太棒了！'}
+                {focusState === FOCUS_STATES.IDLE && t('dashboard.ready')}
+                {focusState === FOCUS_STATES.FOCUSING && (hasFace ? t('dashboard.focusing') : t('dashboard.noFace'))}
+                {focusState === FOCUS_STATES.PAUSED && t('dashboard.paused')}
+                {focusState === FOCUS_STATES.COMPLETED && t('dashboard.complete')}
               </div>
             </div>
 
@@ -360,7 +362,7 @@ function AmbientModePage() {
                 }`}
               >
                 <div className={`size-1.5 rounded-full ${hasFace ? 'bg-green-400' : 'bg-yellow-400 animate-pulse'}`} />
-                {hasFace ? '检测到人脸' : '未检测到人脸'}
+                {hasFace ? t('dashboard.faceDetected') : t('dashboard.noFaceDetected')}
               </div>
             )}
           </div>
@@ -380,7 +382,7 @@ function AmbientModePage() {
               className="flex items-center gap-3 rounded-full bg-primary px-8 py-4 text-base font-semibold text-primary-foreground shadow-xl shadow-primary/30 transition-all hover:scale-105 hover:shadow-2xl hover:shadow-primary/40 active:scale-95"
             >
               <Play className="size-5 fill-current" />
-              开始专注
+              {t('dashboard.startFocus')}
             </motion.button>
           )}
 
@@ -393,7 +395,7 @@ function AmbientModePage() {
                 className="flex items-center gap-2 rounded-full bg-muted/80 px-6 py-3 text-sm font-medium text-foreground backdrop-blur-sm transition-all hover:bg-muted"
               >
                 <Pause className="size-4 fill-current" />
-                暂停
+                {t('dashboard.pause')}
               </motion.button>
               <motion.button
                 initial={{ opacity: 0, scale: 0.8 }}
@@ -402,7 +404,7 @@ function AmbientModePage() {
                 className="flex items-center gap-2 rounded-full bg-red-500/20 px-6 py-3 text-sm font-medium text-red-400 transition-all hover:bg-red-500/30"
               >
                 <AlertCircle className="size-4" />
-                结束
+                {t('dashboard.end')}
               </motion.button>
             </>
           )}
@@ -416,7 +418,7 @@ function AmbientModePage() {
                 className="flex items-center gap-2 rounded-full bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/30 transition-all hover:scale-105 active:scale-95"
               >
                 <Play className="size-4 fill-current" />
-                继续
+                {t('dashboard.resume')}
               </motion.button>
               <motion.button
                 initial={{ opacity: 0, scale: 0.8 }}
@@ -425,7 +427,7 @@ function AmbientModePage() {
                 className="flex items-center gap-2 rounded-full bg-red-500/20 px-6 py-3 text-sm font-medium text-red-400 transition-all hover:bg-red-500/30"
               >
                 <AlertCircle className="size-4" />
-                结束
+                {t('dashboard.end')}
               </motion.button>
             </>
           )}
@@ -434,14 +436,14 @@ function AmbientModePage() {
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col items-center gap-4">
               <div className="flex items-center gap-2 rounded-full bg-green-500/20 px-6 py-3 text-base font-semibold text-green-400">
                 <CheckCircle2 className="size-5" />
-                完成！+{Math.round(focusDuration * 10)} 积分
+                {t('dashboard.completePoints')}+{Math.round(focusDuration * 10)} {t('dashboard.points')}
               </div>
               <motion.button
                 onClick={handleReset}
                 className="flex items-center gap-2 rounded-full bg-muted/60 px-6 py-3 text-sm font-medium text-muted-foreground backdrop-blur-sm transition-all hover:bg-muted hover:text-foreground"
               >
                 <RotateCcw className="size-4" />
-                再来一次
+                {t('dashboard.tryAgain')}
               </motion.button>
             </motion.div>
           )}
@@ -489,10 +491,9 @@ function AmbientModePage() {
               <div className="mx-auto mb-6 flex size-16 items-center justify-center rounded-2xl bg-primary/10">
                 <Camera className="size-8 text-primary" />
               </div>
-              <h2 className="mb-2 text-xl font-bold text-foreground">开启摄像头</h2>
-              <p className="mb-6 text-sm text-muted-foreground">
-                摄像头用于检测你的专注状态。<br />
-                你的画面仅在本地处理，不会被上传。
+              <h2 className="mb-2 text-xl font-bold text-foreground">{t('dashboard.enableCam')}</h2>
+              <p className="mb-6 whitespace-pre-line text-sm text-muted-foreground">
+                {t('dashboard.cameraHint')}
               </p>
               {cameraError && (
                 <div className="mb-4 rounded-lg bg-red-500/10 p-3 text-sm text-red-400">
@@ -504,19 +505,19 @@ function AmbientModePage() {
                   onClick={requestCameraPermission}
                   className="w-full rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-all hover:bg-primary/90"
                 >
-                  允许访问摄像头
+                  {t('dashboard.allowCamera')}
                 </button>
                 <button
                   onClick={() => { setShowPermissionModal(false); setPrivacyMode(true); setFocusState(FOCUS_STATES.FOCUSING); }}
                   className="w-full rounded-xl bg-muted/60 py-3 text-sm font-medium text-muted-foreground transition-all hover:bg-muted hover:text-foreground"
                 >
-                  隐私模式（不使用摄像头）
+                  {t('dashboard.privacyModeOpt')}
                 </button>
                 <button
                   onClick={() => setShowPermissionModal(false)}
                   className="w-full rounded-xl py-2 text-sm text-muted-foreground transition-all hover:text-foreground"
                 >
-                  取消
+                  {t('dashboard.cancel')}
                 </button>
               </div>
             </motion.div>

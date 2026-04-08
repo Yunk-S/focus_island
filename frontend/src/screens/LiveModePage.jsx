@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../hooks/useAuth';
-import { useBackend } from '../hooks/useBackend';
 import { WebRTCProvider, useWebRTC } from '../hooks/useWebRTC';
 import { useI18n } from '../i18n/I18nContext';
 import {
@@ -594,15 +593,8 @@ function LiveRoomScreen({ navigate }) {
 function LiveModePageInner() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { isConnected, sendMessage } = useBackend();
 
-  useEffect(() => {
-    if (!isConnected) return undefined;
-    sendMessage({ type: 'start_camera' });
-    return () => {
-      sendMessage({ type: 'stop_camera' });
-    };
-  }, [isConnected, sendMessage]);
+  // 不自动启动后端摄像头，等待用户在房间内主动开启
 
   // 仅 /live/room 显示视频房间，避免创建房间后 signalingState=in_room 抢走主持界面
   if (location.pathname === '/live/room' || location.pathname.endsWith('/live/room')) {

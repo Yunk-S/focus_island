@@ -2,6 +2,8 @@ import React, { useState, useEffect, createContext } from 'react';
 import { Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import LoadingScreen from './screens/LoadingScreen';
 import LoginScreen from './screens/LoginScreen';
+import ForgotPasswordPage from './screens/ForgotPasswordPage';
+import RegisterPage from './screens/RegisterPage';
 import Dashboard from './screens/Dashboard';
 import PersonalPage from './screens/PersonalPage';
 import LiveModePage from './screens/LiveModePage';
@@ -57,6 +59,8 @@ function AppContent() {
     <Routes>
       <Route path="/" element={<RootRedirect />} />
       <Route path="/login" element={<LoginScreen />} />
+      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+      <Route path="/register" element={<RegisterPage />} />
       <Route path="/dashboard" element={<Dashboard />} />
       <Route path="/ambient" element={<Dashboard />} />
       <Route path="/face-setup" element={<FaceSetupPage />} />

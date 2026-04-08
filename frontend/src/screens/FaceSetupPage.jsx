@@ -8,6 +8,8 @@ import {
   AlertCircle,
   Loader2,
   ChevronRight,
+  Camera,
+  X,
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useBackend } from '../hooks/useBackend';
@@ -29,8 +31,9 @@ function FaceSetupPage() {
   const [loading, setLoading] = useState(false);
   const [lastJson, setLastJson] = useState(null);
   const [statusErr, setStatusErr] = useState(null);
+  const [cameraAgreed, setCameraAgreed] = useState(false);
 
-  const userId = user?.id || 'default_user';
+  const userId = user?.email || 'default_user';
 
   const refreshBound = useCallback(async () => {
     if (!isConnected) return;
@@ -51,11 +54,15 @@ function FaceSetupPage() {
 
   useEffect(() => {
     if (!isConnected) return undefined;
+    if (!cameraAgreed) return undefined;
     sendMessage({ type: 'start_camera' });
     void refreshBound();
     const id = setInterval(() => void refreshBound(), 8000);
-    return () => clearInterval(id);
-  }, [isConnected, sendMessage, refreshBound]);
+    return () => {
+      clearInterval(id);
+      sendMessage({ type: 'stop_camera' });
+    };
+  }, [isConnected, sendMessage, refreshBound, cameraAgreed]);
 
   useEffect(() => {
     if (sessionState?.face_status?.is_bound != null) {
@@ -220,6 +227,46 @@ function FaceSetupPage() {
           </button>
         </div>
       </main>
+
+      {!cameraAgreed && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="relative w-full max-w-sm mx-4 rounded-2xl border border-white/20 bg-white/10 p-8 shadow-2xl backdrop-blur-xl"
+          >
+            <button
+              onClick={() => setCameraAgreed(false)}
+              className="absolute right-4 top-4 text-white/50 hover:text-white"
+            >
+              <X className="size-5" />
+            </button>
+            <div className="flex size-14 mx-auto mb-5 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/80 to-pink-500/80">
+              <Camera className="size-7 text-white" />
+            </div>
+            <h2 className="mb-3 text-center text-xl font-semibold text-white">
+              {t('faceSetup.cameraModalTitle')}
+            </h2>
+            <p className="mb-7 text-center text-sm leading-relaxed text-white/70">
+              {t('faceSetup.cameraModalBody')}
+            </p>
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={() => setCameraAgreed(true)}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-primary to-pink-500 py-3 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/25 transition-opacity hover:opacity-90"
+              >
+                {t('faceSetup.cameraModalAgree')}
+              </button>
+              <button
+                onClick={() => setCameraAgreed(false)}
+                className="w-full rounded-xl border border-white/20 py-3 text-center text-sm text-white/60 transition-colors hover:border-white/40 hover:text-white/80"
+              >
+                {t('faceSetup.cameraModalDisagree')}
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 }

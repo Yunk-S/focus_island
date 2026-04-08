@@ -24,7 +24,8 @@ import {
   Crown,
   Flame,
   Timer,
-  Shield
+  Shield,
+  X,
 } from 'lucide-react';
 
 // Mock leaderboard data
@@ -54,8 +55,9 @@ function Dashboard() {
   // Local state
   const [isFocusing, setIsFocusing] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
-  const [cameraEnabled, setCameraEnabled] = useState(true);
-  const [privacyMode, setPrivacyMode] = useState(false);
+  const [cameraEnabled, setCameraEnabled] = useState(false);
+  const [privacyMode, setPrivacyMode] = useState(true);
+  const [cameraAgreed, setCameraAgreed] = useState(false);
   const [currentTime, setCurrentTime] = useState(25 * 60); // 25 minutes in seconds
   const [focusDuration, setFocusDuration] = useState(25);
   const [totalPoints, setTotalPoints] = useState(user?.totalPoints || 0);
@@ -89,14 +91,15 @@ function Dashboard() {
     }
   }, [focusSessionError]);
 
-  // Ambient / dashboard：进入页面后再打开后端摄像头（不在应用启动时占用设备）
+  // Ambient / dashboard：只有用户同意后才打开后端摄像头
   useEffect(() => {
     if (!isConnected) return undefined;
+    if (!cameraAgreed) return undefined;
     sendMessage({ type: 'start_camera' });
     return () => {
       sendMessage({ type: 'stop_camera' });
     };
-  }, [isConnected, sendMessage]);
+  }, [isConnected, sendMessage, cameraAgreed]);
   
   // Initialize camera
   useEffect(() => {
@@ -638,6 +641,42 @@ function Dashboard() {
           </div>
         </motion.div>
       </main>
+
+      {!cameraAgreed && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="relative w-full max-w-sm mx-4 rounded-2xl border border-white/20 bg-white/10 p-8 shadow-2xl backdrop-blur-xl">
+            <button
+              onClick={() => setCameraAgreed(false)}
+              className="absolute right-4 top-4 text-white/50 hover:text-white"
+            >
+              <X className="size-5" />
+            </button>
+            <div className="flex size-14 mx-auto mb-5 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/80 to-pink-500/80">
+              <Camera className="size-7 text-white" />
+            </div>
+            <h2 className="mb-3 text-center text-xl font-semibold text-white">
+              {t('dashboard.enableCam')}
+            </h2>
+            <p className="mb-7 text-center text-sm leading-relaxed text-white/70">
+              {t('dashboard.cameraHint')}
+            </p>
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={() => setCameraAgreed(true)}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-primary to-pink-500 py-3 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/25 transition-opacity hover:opacity-90"
+              >
+                {t('dashboard.allowCamera')}
+              </button>
+              <button
+                onClick={() => setCameraAgreed(false)}
+                className="w-full rounded-xl border border-white/20 py-3 text-center text-sm text-white/60 transition-colors hover:border-white/40 hover:text-white/80"
+              >
+                {t('dashboard.cancel')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </motion.div>
   );
 }

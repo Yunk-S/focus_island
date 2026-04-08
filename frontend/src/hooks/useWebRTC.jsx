@@ -386,45 +386,62 @@ export function WebRTCProvider({ children }) {
     setSignalingState('connecting');
     setRoomError(null);
 
-    const url = getSignalUrl();
-    const ws = new WebSocket(url);
-    wsRef.current = ws;
-
-    connectTimeoutRef.current = setTimeout(() => {
-      if (wsRef.current === ws && ws.readyState !== WebSocket.OPEN) {
-        setRoomError(
-          'Signaling server unreachable. Start the room server (port 8766) or check firewall.'
-        );
-        setSignalingState('disconnected');
-        try { ws.close(); } catch { /* ignore */ }
-      }
-    }, 12000);
-
-    ws.onopen = () => {
-      console.log('[WebRTC] Signaling connected', url);
-    };
-
-    ws.onmessage = (event) => {
+    void (async () => {
+      let url = getSignalUrl();
       try {
-        handlerRef.current(JSON.parse(event.data));
-      } catch (err) {
-        console.error('[WebRTC] Failed to parse signaling message:', err);
+        if (typeof window !== 'undefined' && window.electronAPI?.getRoomSignaling) {
+          const r = await window.electronAPI.getRoomSignaling();
+          if (r?.url && typeof r.url === 'string') {
+            url = r.url;
+          }
+        }
+      } catch (e) {
+        console.warn('[WebRTC] getRoomSignaling IPC failed, using build-time URL', e);
       }
-    };
 
-    ws.onerror = () => {
-      console.error('[WebRTC] Signaling WebSocket error');
-      setRoomError('Failed to connect to signaling server.');
-    };
-
-    ws.onclose = () => {
-      if (connectTimeoutRef.current) {
-        clearTimeout(connectTimeoutRef.current);
-        connectTimeoutRef.current = null;
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        return;
       }
-      console.log('[WebRTC] Signaling disconnected');
-      setSignalingState((s) => (s === 'in_room' ? s : 'disconnected'));
-    };
+
+      const ws = new WebSocket(url);
+      wsRef.current = ws;
+
+      connectTimeoutRef.current = setTimeout(() => {
+        if (wsRef.current === ws && ws.readyState !== WebSocket.OPEN) {
+          setRoomError(
+            'Signaling server unreachable. Start the room server (port 8766) or check firewall.'
+          );
+          setSignalingState('disconnected');
+          try { ws.close(); } catch { /* ignore */ }
+        }
+      }, 12000);
+
+      ws.onopen = () => {
+        console.log('[WebRTC] Signaling connected', url);
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          handlerRef.current(JSON.parse(event.data));
+        } catch (err) {
+          console.error('[WebRTC] Failed to parse signaling message:', err);
+        }
+      };
+
+      ws.onerror = () => {
+        console.error('[WebRTC] Signaling WebSocket error');
+        setRoomError('Failed to connect to signaling server.');
+      };
+
+      ws.onclose = () => {
+        if (connectTimeoutRef.current) {
+          clearTimeout(connectTimeoutRef.current);
+          connectTimeoutRef.current = null;
+        }
+        console.log('[WebRTC] Signaling disconnected');
+        setSignalingState((s) => (s === 'in_room' ? s : 'disconnected'));
+      };
+    })();
   }, []);
 
   const createRoom = useCallback(

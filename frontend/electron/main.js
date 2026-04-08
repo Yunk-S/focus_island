@@ -7,6 +7,11 @@ const { spawn } = require('child_process');
 /** Ports passed to renderer (IPC) and to Python; defaults until allocateBackendPorts runs. */
 let backendPorts = { wsPort: 8765, apiPort: 8000 };
 
+/** WebRTC room signaling (must match frontend useWebRTC / Vite default 8766). */
+const DEFAULT_ROOM_WS_PORT = 8766;
+let roomProcess = null;
+let roomWsPort = DEFAULT_ROOM_WS_PORT;
+
 function readPortsFromRoot(backendDir) {
   try {
     const p = path.join(backendDir, '.focus_island_ports.json');
@@ -50,6 +55,105 @@ const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 // Global references
 let mainWindow = null;
 let backendProcess = null;
+
+function stopRoomServer() {
+  if (roomProcess) {
+    if (process.platform === 'win32') {
+      try {
+        spawn('taskkill', ['/pid', roomProcess.pid, '/f', '/t']);
+      } catch (_) {
+        /* ignore */
+      }
+    } else {
+      try {
+        roomProcess.kill('SIGTERM');
+      } catch (_) {
+        /* ignore */
+      }
+    }
+    roomProcess = null;
+  }
+}
+
+/**
+ * Start room_server on 8766 if the port is free; otherwise assume another process
+ * (e.g. python start.py) already serves signaling.
+ */
+function startRoomServerIfNeeded(backendDir) {
+  return new Promise((resolve) => {
+    checkPortFree(DEFAULT_ROOM_WS_PORT, '127.0.0.1').then((free) => {
+      if (!free) {
+        roomWsPort = DEFAULT_ROOM_WS_PORT;
+        console.log(
+          '[Main] Room signaling port',
+          DEFAULT_ROOM_WS_PORT,
+          'busy — assuming room server already running (e.g. start.py)'
+        );
+        return resolve(true);
+      }
+
+      const pyPath = path.join(backendDir, 'src');
+      const venvPython =
+        process.platform === 'win32'
+          ? path.join(backendDir, '.venv', 'Scripts', 'python.exe')
+          : path.join(backendDir, '.venv', 'bin', 'python3');
+      const useVenv = fs.existsSync(venvPython);
+      const exe = useVenv ? venvPython : process.platform === 'win32' ? 'python' : 'python3';
+
+      try {
+        roomProcess = spawn(
+          exe,
+          [
+            '-m',
+            'focus_island.room_server',
+            '--host',
+            '127.0.0.1',
+            '--port',
+            String(DEFAULT_ROOM_WS_PORT),
+          ],
+          {
+            cwd: backendDir,
+            env: {
+              ...process.env,
+              PYTHONPATH: pyPath,
+            },
+            stdio: ['pipe', 'pipe', 'pipe'],
+            shell: false,
+          }
+        );
+        roomWsPort = DEFAULT_ROOM_WS_PORT;
+
+        roomProcess.stdout.on('data', (data) => {
+          const output = data.toString();
+          console.log('[Room]', output.trimEnd());
+          if (mainWindow) {
+            mainWindow.webContents.send('room-log', { type: 'stdout', data: output });
+          }
+        });
+        roomProcess.stderr.on('data', (data) => {
+          const output = data.toString();
+          console.warn('[Room]', output.trimEnd());
+          if (mainWindow) {
+            mainWindow.webContents.send('room-log', { type: 'stderr', data: output });
+          }
+        });
+        roomProcess.on('error', (err) => {
+          console.error('[Room] Failed to start room server:', err);
+        });
+        roomProcess.on('exit', (code) => {
+          console.log('[Room] room_server exited with code:', code);
+          roomProcess = null;
+        });
+
+        console.log('[Main] Room signaling server started (pid:', roomProcess.pid, ')');
+        resolve(true);
+      } catch (err) {
+        console.error('[Main] Error spawning room server:', err);
+        resolve(false);
+      }
+    });
+  });
+}
 
 // Create the main window
 function createWindow() {
@@ -200,6 +304,11 @@ app.whenReady().then(async () => {
     console.log('[Main] Allocated backend ports:', backendPorts);
   }
 
+  // Room server is lightweight — start before the window so Live mode can connect immediately.
+  if (process.env.FOCUS_ISLAND_SKIP_ROOM_SERVER !== '1') {
+    await startRoomServerIfNeeded(backendDir);
+  }
+
   createWindow();
 
   if (process.env.FOCUS_ISLAND_EXTERNAL_BACKEND !== '1') {
@@ -217,6 +326,7 @@ app.whenReady().then(async () => {
 });
 
 app.on('window-all-closed', () => {
+  stopRoomServer();
   stopBackend();
   if (process.platform !== 'darwin') {
     app.quit();
@@ -224,6 +334,7 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
+  stopRoomServer();
   stopBackend();
 });
 
@@ -250,5 +361,11 @@ ipcMain.handle('get-app-version', async () => {
 
 ipcMain.handle('get-backend-ports', async () => ({ ...backendPorts }));
 
+/** ws:// URL for Live mode / WebRTC signaling (room_server). */
+ipcMain.handle('get-room-signaling', async () => ({
+  port: roomWsPort,
+  url: `ws://127.0.0.1:${roomWsPort}/ws/room`,
+}));
+
 // Export for testing
-module.exports = { startBackend, stopBackend };
+module.exports = { startBackend, stopBackend, startRoomServerIfNeeded, stopRoomServer };

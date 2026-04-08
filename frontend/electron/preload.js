@@ -7,6 +7,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   stopBackend: () => ipcRenderer.invoke('stop-backend'),
   getBackendStatus: () => ipcRenderer.invoke('get-backend-status'),
   getBackendPorts: () => ipcRenderer.invoke('get-backend-ports'),
+  /** Live mode WebRTC signaling URL (room_server); use when Electron spawns room. */
+  getRoomSignaling: () => ipcRenderer.invoke('get-room-signaling'),
   
   // App info
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),

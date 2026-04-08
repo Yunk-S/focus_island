@@ -4,7 +4,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Eye, EyeOff, Mail, Sparkles } from 'lucide-react';
+import { Eye, EyeOff, Mail } from 'lucide-react';
+import { Palmtree as IslandIcon } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useI18n } from '@/i18n/I18nContext';
 
@@ -248,8 +249,8 @@ function LoginPage() {
       <div className="relative hidden flex-col justify-between bg-gradient-to-br from-primary/90 via-primary to-primary/80 p-12 text-primary-foreground lg:flex">
         <div className="relative z-20">
           <div className="flex items-center gap-2 text-lg font-semibold">
-            <div className="flex size-8 items-center justify-center rounded-lg bg-primary-foreground/10 backdrop-blur-sm">
-              <Sparkles className="size-4" />
+            <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary/80 to-pink-500/80">
+              <IslandIcon className="size-6 text-white" />
             </div>
             <span>{t('login.brand')}</span>
           </div>

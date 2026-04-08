@@ -2,6 +2,9 @@
 UniFace 模型管理器
 
 统一管理所有 ONNX 模型的加载和初始化。
+人脸检测遵循 UniFace 文档: https://github.com/yakhyo/uniface
+（`from uniface.detection import RetinaFace` + `RetinaFace(providers=...)`；
+本地权重放在项目 `models/`，通过 `UNIFACE_CACHE_DIR` 指向该目录）。
 
 Author: SSP Team
 """

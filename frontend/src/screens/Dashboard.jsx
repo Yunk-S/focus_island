@@ -48,6 +48,7 @@ function Dashboard() {
     pauseSession,
     resumeSession,
     sendMessage,
+    focusSessionError,
   } = useBackend();
   
   // Local state
@@ -80,6 +81,13 @@ function Dashboard() {
       setTotalPoints(sessionState.total_points);
     }
   }, [sessionState.total_points]);
+
+  useEffect(() => {
+    if (focusSessionError) {
+      setIsFocusing(false);
+      setIsPaused(false);
+    }
+  }, [focusSessionError]);
 
   // Ambient / dashboard：进入页面后再打开后端摄像头（不在应用启动时占用设备）
   useEffect(() => {
@@ -459,6 +467,12 @@ function Dashboard() {
               <p className="text-xs text-text-muted">{t('dashboard.milestones')}</p>
             </div>
           </div>
+
+          {focusSessionError && (
+            <p className="mb-4 max-w-md text-center text-sm text-red-400">
+              {focusSessionError}
+            </p>
+          )}
           
           {/* Control Buttons */}
           <div className="flex items-center gap-4">

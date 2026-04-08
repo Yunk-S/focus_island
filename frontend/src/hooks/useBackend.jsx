@@ -26,6 +26,8 @@ export function BackendProvider({ children }) {
   const [systemInfo, setSystemInfo] = useState(defaultSystemInfo);
   const [backendLogs, setBackendLogs] = useState([]);
   const [error, setError] = useState(null);
+  /** Last start_session (focus) error from backend; cleared on success */
+  const [focusSessionError, setFocusSessionError] = useState(null);
   
   // WebSocket ref
   const wsRef = useRef(null);
@@ -142,6 +144,26 @@ export function BackendProvider({ children }) {
         });
         break;
 
+      case 'session_started':
+        if (data) {
+          if (data.success) {
+            setFocusSessionError(null);
+          } else {
+            const msg =
+              typeof data.error === 'string'
+                ? data.error
+                : data.message || 'Failed to start focus session';
+            setFocusSessionError(msg);
+          }
+          setSessionState((prev) => ({
+            ...prev,
+            active: !!data.success,
+            session_id: data.session_id ?? prev.session_id,
+            current_state: data.success ? prev.current_state : 'idle',
+          }));
+        }
+        break;
+
       case 'frame_result':
         if (data) {
           setFrameData(data);
@@ -150,7 +172,7 @@ export function BackendProvider({ children }) {
           if (data.session) {
             setSessionState(prev => ({
               ...prev,
-              session_id: data.workflow?.session_id,
+              session_id: data.workflow?.session_id ?? prev.session_id,
               total_points: data.session.stats?.total_points ?? prev.total_points,
               focus_time: data.session.stats?.focus_time_min ?? prev.focus_time,
               current_state: data.session.state || prev.current_state
@@ -243,6 +265,21 @@ export function BackendProvider({ children }) {
       default:
         console.log('[WS] Unknown message type:', type);
     }
+  }, []);
+
+  const getApiBaseUrl = useCallback(async () => {
+    let port = 8000;
+    try {
+      if (window.electronAPI?.getBackendPorts) {
+        const p = await window.electronAPI.getBackendPorts();
+        if (p?.apiPort != null) port = Number(p.apiPort) || 8000;
+      } else if (import.meta.env.VITE_BACKEND_API_PORT) {
+        port = Number(import.meta.env.VITE_BACKEND_API_PORT) || 8000;
+      }
+    } catch {
+      /* default */
+    }
+    return `http://127.0.0.1:${port}`;
   }, []);
 
   // Send message to backend
@@ -388,6 +425,8 @@ export function BackendProvider({ children }) {
     bindFace,
     verifyFace,
     checkFaceStatus,
+    getApiBaseUrl,
+    focusSessionError,
     
     // Logs
     backendLogs,

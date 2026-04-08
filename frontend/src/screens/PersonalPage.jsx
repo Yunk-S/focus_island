@@ -12,6 +12,7 @@ import {
   KeyRound,
   Settings,
   ChevronRight,
+  ScanFace,
 } from 'lucide-react';
 
 function PersonalPage() {
@@ -25,6 +26,13 @@ function PersonalPage() {
   };
 
   const quickLinks = [
+    {
+      icon: <ScanFace className="size-5 text-violet-400" />,
+      titleKey: 'personal.faceSetupTitle',
+      descKey: 'personal.faceSetupDesc',
+      path: '/face-setup',
+      color: 'hover:border-violet-500/40',
+    },
     {
       icon: <User className="size-5 text-primary" />,
       titleKey: 'personal.profileTitle',

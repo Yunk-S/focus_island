@@ -34,7 +34,15 @@ const FOCUS_DURATIONS = [15, 25, 45, 60]; // minutes
 function AmbientModePage() {
   const navigate = useNavigate();
   const { user, updatePoints, updateStreak } = useAuth();
-  const { sessionState, isConnected, startSession, stopSession, pauseSession, resumeSession } = useBackend();
+  const {
+    sessionState,
+    isConnected,
+    startSession,
+    stopSession,
+    pauseSession,
+    resumeSession,
+    focusSessionError,
+  } = useBackend();
 
   // ─── Timer state ─────────────────────────────────────────────────────────────
   const [focusDuration, setFocusDuration] = useState(25); // minutes
@@ -110,6 +118,12 @@ function AmbientModePage() {
     }
     return () => clearInterval(interval);
   }, [focusState, timeLeft]);
+
+  useEffect(() => {
+    if (focusSessionError) {
+      setFocusState(FOCUS_STATES.IDLE);
+    }
+  }, [focusSessionError]);
 
   const handleStartFocus = () => {
     if (!cameraRequested && !privacyMode) {
@@ -353,6 +367,10 @@ function AmbientModePage() {
         </motion.div>
 
         {/* Control buttons */}
+        {focusSessionError && (
+          <p className="mb-2 max-w-md text-center text-sm text-red-400">{focusSessionError}</p>
+        )}
+
         <div className="flex items-center gap-4">
           {focusState === FOCUS_STATES.IDLE && (
             <motion.button

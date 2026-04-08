@@ -228,7 +228,7 @@ function LoginPage() {
     e.preventDefault();
     try {
       await login(email, password || 'demo');
-      navigate('/personal');
+      navigate('/face-setup');
     } catch {
       /* error surfaced via useAuth */
     }
@@ -237,7 +237,7 @@ function LoginPage() {
   const handleDemoLogin = async () => {
     try {
       await login('alex@focusisland.com', 'demo');
-      navigate('/personal');
+      navigate('/face-setup');
     } catch {
       /* error surfaced via useAuth */
     }

@@ -34,10 +34,10 @@ from .types import (
     FrameResult
 )
 from .model_manager import ModelManager
-from .auth import IdentityAuthenticator, UserProfile, VerificationResult
+from .auth import IdentityAuthenticator
 from .ear import EARCalculator, EYEIndexConfig
 from .stream_controller import FrameController, FaceSelector, AntiSpoofingMonitor
-from .focus_fsm import SessionManager
+from .focus_fsm import SessionManager, FocusRuleChecker
 from .websocket_server import WebSocketServer, WSMessage
 
 
@@ -347,6 +347,9 @@ class FocusWorkFlow:
         # 上一帧时间
         self._last_frame_time = time.time()
         self._last_verification_time = time.time()
+        # 未开始专注时：用规则器推导「预览」状态（与 FSM 的 focused/warning/idle 对齐）
+        self._preview_rule_checker = FocusRuleChecker(self.config)
+        self._last_preview_emit_ts = 0.0
         
         logger.info(f"FocusWorkFlow initialized: CUDA={use_cuda}, target_fps={target_fps}")
     
@@ -723,6 +726,155 @@ class FocusWorkFlow:
             "message": I18n.t("session_started")
         }
     
+    def _analyze_perception(
+        self,
+        image: np.ndarray,
+        *,
+        run_periodic_identity: bool,
+    ) -> PerceptionResult:
+        """人脸检测（RetinaFace）+ 姿态 + EAR；可选周期性身份验证。"""
+        faces = self.model_manager.detect_faces(image)
+        target_bbox = self.face_selector.select_target_face(faces)
+        perception = PerceptionResult()
+        
+        if target_bbox is None:
+            perception.has_face = False
+            self.anti_spoofing.update(None)
+            return perception
+        
+        perception.has_face = True
+        perception.bbox = target_bbox
+        
+        target_face = None
+        for face in faces:
+            if np.allclose(face.bbox, target_bbox, atol=1.0):
+                target_face = face
+                break
+        
+        if target_face is None and faces:
+            target_face = faces[0]
+        
+        if not target_face:
+            self.anti_spoofing.update(None)
+            return perception
+        
+        perception.face_confidence = target_face.confidence
+        
+        x1, y1, x2, y2 = map(int, target_bbox[:4])
+        face_crop = image[y1:y2, x1:x2]
+        
+        if face_crop.size > 0:
+            t0 = time.time()
+            head_pose = self.model_manager.estimate_head_pose(face_crop)
+            perception.detection_time_ms += (time.time() - t0) * 1000
+            perception.pitch = head_pose.pitch
+            perception.yaw = head_pose.yaw
+            perception.roll = head_pose.roll
+        
+        t0 = time.time()
+        landmarks_106 = self.model_manager.get_landmarks_106(image, target_bbox)
+        perception.detection_time_ms += (time.time() - t0) * 1000
+        
+        eye_data = self.ear_calculator.get_eye_data(landmarks_106)
+        perception.ear_left = eye_data.ear_left
+        perception.ear_right = eye_data.ear_right
+        perception.ear_avg = eye_data.ear_avg
+        
+        if run_periodic_identity and self.authenticator.should_verify():
+            t0 = time.time()
+            embedding, _ = self.model_manager.extract_face_embedding(image, target_face)
+            perception.embedding = embedding
+            perception.detection_time_ms += (time.time() - t0) * 1000
+            
+            verification = self.authenticator.verify_identity(embedding)
+            perception.identity_verified = verification.is_verified
+            perception.identity_similarity = verification.similarity
+            perception.is_cheating = verification.is_cheating
+            
+            if verification.is_cheating:
+                logger.warning(
+                    "CHEATING DETECTED: similarity=%.4f", verification.similarity
+                )
+                self._emit("cheating_detected", verification.to_dict())
+        
+        self.anti_spoofing.update(target_bbox)
+        return perception
+    
+    def process_preview_frame(self, image: np.ndarray) -> Optional[dict]:
+        """
+        未进入专注会话时，基于当前帧推导预览状态（idle / focused / warning），
+        便于前端在未 start_session 时仍能看到人脸与姿态检测是否工作。
+        """
+        if not self.model_manager:
+            return None
+        if self.workflow_state.is_active:
+            return None
+        
+        now = time.time()
+        if now - self._last_preview_emit_ts < 0.22:
+            return None
+        self._last_preview_emit_ts = now
+        
+        delta_time = max(now - self._last_frame_time, 0.001)
+        self.face_selector.update_image_params(image.shape[1], image.shape[0])
+        
+        frame_start = time.time()
+        perception = self._analyze_perception(
+            image, run_periodic_identity=False
+        )
+        perception.total_time_ms = (time.time() - frame_start) * 1000
+        
+        rules = self._preview_rule_checker.check_all(
+            perception.has_face,
+            perception.pitch,
+            perception.yaw,
+            perception.ear_avg,
+        )
+        if not perception.has_face:
+            preview_state = FocusState.IDLE.value
+            wr = WarningReason.NO_FACE.value
+        elif rules.overall_valid:
+            preview_state = FocusState.FOCUSED.value
+            wr = WarningReason.NONE.value
+        else:
+            preview_state = FocusState.WARNING.value
+            wr = rules.warning_reason.value
+        
+        pd = perception.to_dict()
+        return {
+            "workflow": {
+                "phase": WorkFlowPhase.IDLE.value,
+                "session_id": None,
+                "frame_count": self.workflow_state.frame_count,
+                "processed_frames": 0,
+                "fps": 1.0 / delta_time,
+                "preview": True,
+                "session_active": False,
+            },
+            "perception": pd,
+            "session": {
+                "session_id": None,
+                "frame_id": -1,
+                "state": preview_state,
+                "warning_reason": wr,
+                "is_valid": rules.overall_valid,
+                "head_pose": pd["head_pose"],
+                "eye": pd["eye"],
+                "stats": {
+                    "total_points": 0,
+                    "focus_time_min": 0.0,
+                    "current_streak_min": 0.0,
+                },
+                "identity_verified": False,
+                "preview": True,
+            },
+            "i18n": {
+                "state_text": I18n.get_state_text(preview_state),
+                "warning_text": I18n.get_warning_text(wr),
+                "language": I18n.get_locale(),
+            },
+        }
+    
     def process_frame(self, image: np.ndarray) -> Optional[dict]:
         """
         处理单帧 (阶段二+三+四)
@@ -761,118 +913,41 @@ class FocusWorkFlow:
         frame_start = time.time()
         self.workflow_state.frame_count += 1
         
-        # 2. 人脸检测
-        faces = self.model_manager.detect_faces(image)
-        
-        # 3. 选择目标人脸
-        target_bbox = self.face_selector.select_target_face(faces)
-        
-        # 构建感知结果
-        perception = PerceptionResult()
+        perception = self._analyze_perception(
+            image, run_periodic_identity=True
+        )
         perception.total_time_ms = (time.time() - frame_start) * 1000
         
-        if target_bbox is None:
-            # 无脸
-            perception.has_face = False
-            self.anti_spoofing.update(None)
+        # ========== 阶段三：状态裁决 ==========
+        
+        # 判断当前帧是否通过身份验证
+        # - 如果用户未绑定（start_focus 失败）→ 未验证
+        # - 如果用户已绑定且验证间隔内（刚绑定）→ 已验证
+        # - 如果用户已绑定且需要验证 → 检查最新验证结果
+        authenticator = self.authenticator
+        if authenticator.current_user is None:
+            is_verified = False
+        elif not authenticator.should_verify():
+            # 刚绑定或验证间隔内，无需重新验证，视为已验证
+            is_verified = True
         else:
-            perception.has_face = True
-            perception.bbox = target_bbox
-            
-            # 查找对应的 face 对象
-            target_face = None
-            for face in faces:
-                if np.allclose(face.bbox, target_bbox, atol=1.0):
-                    target_face = face
-                    break
-            
-            if target_face is None and faces:
-                target_face = faces[0]
-            
-            if target_face:
-                perception.face_confidence = target_face.confidence
-                
-                # 4. 头部姿态估计
-                x1, y1, x2, y2 = map(int, target_bbox[:4])
-                face_crop = image[y1:y2, x1:x2]
-                
-                if face_crop.size > 0:
-                    t0 = time.time()
-                    head_pose = self.model_manager.estimate_head_pose(face_crop)
-                    perception.detection_time_ms += (time.time() - t0) * 1000
-                    
-                    perception.pitch = head_pose.pitch
-                    perception.yaw = head_pose.yaw
-                    perception.roll = head_pose.roll
-                
-                # 5. 106点关键点 + EAR 计算
-                t0 = time.time()
-                landmarks_106 = self.model_manager.get_landmarks_106(image, target_bbox)
-                perception.detection_time_ms += (time.time() - t0) * 1000
-                
-                eye_data = self.ear_calculator.get_eye_data(landmarks_106)
-                perception.ear_left = eye_data.ear_left
-                perception.ear_right = eye_data.ear_right
-                perception.ear_avg = eye_data.ear_avg
-                
-                # 6. 身份验证 (定期)
-                if self.authenticator.should_verify():
-                    t0 = time.time()
-                    if target_face:
-                        embedding, _ = self.model_manager.extract_face_embedding(image, target_face)
-                        perception.embedding = embedding
-                        
-                        verification = self.authenticator.verify_identity(embedding)
-                        perception.identity_verified = verification.is_verified
-                        perception.identity_similarity = verification.similarity
-                        perception.is_cheating = verification.is_cheating
-                        
-                        if verification.is_cheating:
-                            logger.warning(f"CHEATING DETECTED: similarity={verification.similarity:.4f}")
-                            self._emit("cheating_detected", verification.to_dict())
-                    else:
-                        verification = VerificationResult(
-                            is_verified=False,
-                            similarity=0.0,
-                            threshold=0.6,
-                            is_cheating=False,
-                            message="No face for verification"
-                        )
-                
-                # 更新防作弊监控
-                self.anti_spoofing.update(target_bbox)
+            # 需要验证，使用最新验证结果
+            is_verified = getattr(perception, 'identity_verified', False)
         
-        perception.total_time_ms = (time.time() - frame_start) * 1000
-        
-            # ========== 阶段三：状态裁决 ==========
+        session_result = None
+        if self.session_manager:
+            session_result = self.session_manager.process_frame(
+                has_face=perception.has_face,
+                pitch=perception.pitch,
+                yaw=perception.yaw,
+                ear_avg=perception.ear_avg,
+                frame_id=self.workflow_state.processed_frames,
+                delta_time=delta_time,
+                identity_verified=is_verified
+            )
             
-            # 判断当前帧是否通过身份验证
-            # - 如果用户未绑定（start_focus 失败）→ 未验证
-            # - 如果用户已绑定且验证间隔内（刚绑定）→ 已验证
-            # - 如果用户已绑定且需要验证 → 检查最新验证结果
-            authenticator = self.authenticator
-            if authenticator.current_user is None:
-                is_verified = False
-            elif not authenticator.should_verify():
-                # 刚绑定或验证间隔内，无需重新验证，视为已验证
-                is_verified = True
-            else:
-                # 需要验证，使用最新验证结果
-                is_verified = getattr(perception, 'identity_verified', False)
-            
-            if self.session_manager:
-                session_result = self.session_manager.process_frame(
-                    has_face=perception.has_face,
-                    pitch=perception.pitch,
-                    yaw=perception.yaw,
-                    ear_avg=perception.ear_avg,
-                    frame_id=self.workflow_state.processed_frames,
-                    delta_time=delta_time,
-                    identity_verified=is_verified
-                )
-                
-                # 同步 perception.identity_verified 与实际验证结果
-                perception.identity_verified = is_verified
+            # 同步 perception.identity_verified 与实际验证结果
+            perception.identity_verified = is_verified
         
         # ========== 阶段四：积分结算 ==========
         # 积分已在 session_manager 中自动计算
@@ -888,7 +963,9 @@ class FocusWorkFlow:
                 "session_id": self.workflow_state.session_id,
                 "frame_count": self.workflow_state.frame_count,
                 "processed_frames": self.workflow_state.processed_frames,
-                "fps": 1.0 / max(delta_time, 0.001)
+                "fps": 1.0 / max(delta_time, 0.001),
+                "session_active": True,
+                "preview": False,
             },
             "perception": perception.to_dict(),
             "session": session_result if session_result else None,

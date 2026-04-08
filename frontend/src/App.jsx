@@ -8,6 +8,7 @@ import LiveModePage from './screens/LiveModePage';
 import ProfilePage from './screens/ProfilePage';
 import AccountPage from './screens/AccountPage';
 import SettingsPage from './screens/SettingsPage';
+import FaceSetupPage from './screens/FaceSetupPage';
 import { BackendProvider } from './hooks/useBackend';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 
@@ -44,7 +45,7 @@ function AppContent() {
     }
 
     if (path === '/login') {
-      navigate('/personal', { replace: true });
+      navigate('/face-setup', { replace: true });
     }
   }, [initialLoading, authLoading, isAuthenticated, location.pathname, navigate]);
 
@@ -58,6 +59,7 @@ function AppContent() {
       <Route path="/login" element={<LoginScreen />} />
       <Route path="/dashboard" element={<Dashboard />} />
       <Route path="/ambient" element={<Dashboard />} />
+      <Route path="/face-setup" element={<FaceSetupPage />} />
       <Route path="/personal" element={<PersonalPage />} />
       <Route path="/profile" element={<ProfilePage />} />
       <Route path="/account" element={<AccountPage />} />

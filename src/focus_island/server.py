@@ -653,10 +653,13 @@ class ServerMode:
             # 广播帧结果
             async def broadcast_loop():
                 while not self.shutdown_requested:
-                    if connected_clients and self.session_active and self.workflow:
+                    if connected_clients and self.workflow and self.capture_running:
                         frame = self.get_latest_frame()
                         if frame is not None:
-                            result = self.workflow.process_frame(frame)
+                            if self.session_active and self.workflow.workflow_state.is_active:
+                                result = self.workflow.process_frame(frame)
+                            else:
+                                result = self.workflow.process_preview_frame(frame)
                             if result:
                                 msg = _ws_json({
                                     "type": "frame_result",

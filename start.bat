@@ -1,11 +1,7 @@
 @echo off
-REM Single entry-point — launches the Python launcher.
-REM Requirements:
-REM   • Python 3.10+ in PATH  (or .venv with python.exe)
-REM   • Node.js 18+ in PATH
-REM   • Windows 10/11
+REM ASCII-only: avoids GBK cmd mis-reading UTF-8 BOM in REM lines.
 cd /d "%~dp0." || (
-    echo [ERROR] Cannot change to folder containing this script.
+    echo [ERROR] Cannot cd to project folder.
     pause
     exit /b 1
 )

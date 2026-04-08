@@ -76,16 +76,6 @@ def resolve_py() -> Path:
     return Path(sys.executable)
 
 
-def pip_install(packages: list[str]) -> None:
-    """Install missing packages into the venv."""
-    py = resolve_py()
-    for pkg in packages:
-        r = subprocess.run([str(py), "-m", "pip", "install", pkg],
-                          capture_output=True, text=True)
-        if r.returncode != 0:
-            warn(f"pip install {pkg} failed:\n  {r.stderr[:300]}")
-
-
 # ─── Process collector ─────────────────────────────────────────────────────────
 
 class Processes:
@@ -105,17 +95,24 @@ class Processes:
         code = proc.wait()
         log(pid, label, f"exited with code {code}", Col.YELLOW)
 
-    def add(self, label: str, colour: str, args: list[str],
-            cwd: Path | None = None, env: dict | None = None) -> subprocess.Popen | None:
-        py = resolve_py()
+    def add(
+        self,
+        label: str,
+        colour: str,
+        argv: list[str],
+        cwd: Path | None = None,
+        env: dict | None = None,
+        set_pythonpath: bool = True,
+    ) -> subprocess.Popen | None:
         full_env = dict(os.environ)
-        full_env["PYTHONPATH"] = str(ROOT / "src")
+        if set_pythonpath:
+            full_env["PYTHONPATH"] = str(ROOT / "src")
         if env:
             full_env.update(env)
 
         try:
             proc = subprocess.Popen(
-                [str(py] + args,
+                argv,
                 cwd=str(cwd or ROOT),
                 env=full_env,
                 stdout=subprocess.PIPE,
@@ -123,7 +120,8 @@ class Processes:
                 text=True,
                 bufsize=1,
                 creationflags=subprocess.CREATE_NEW_PROCESS_GROUP
-                    if os.name == "nt" else 0,
+                if os.name == "nt"
+                else 0,
             )
         except OSError as e:
             warn(f"Failed to start {label}: {e}")
@@ -143,7 +141,7 @@ class Processes:
 
     def terminate_all(self) -> None:
         """Send SIGTERM / CTRL_BREAK to every managed process."""
-        print(f"\n{Col.YELLOW}[{ts()}]  Stopping all processes…{Col.RESET}")
+        print(f"\n{Col.YELLOW}[{ts()}]  Stopping all processes...{Col.RESET}")
         with self._lock:
             for p in self.procs:
                 try:
@@ -169,44 +167,52 @@ class Processes:
 # ─── Service definitions ───────────────────────────────────────────────────────
 
 def start_backend(p: Processes) -> None:
+    py = str(resolve_py())
     p.add(
         label="Backend",
         colour=Col.GREEN,
-        args=[
-            "-m", "focus_island.main",
-            "--mode", "server",
-            "--ws-port", "8765",
-            "--api-port", "8000",
+        argv=[
+            py,
+            "-m",
+            "focus_island.main",
+            "--mode",
+            "server",
+            "--ws-port",
+            "8765",
+            "--api-port",
+            "8000",
         ],
     )
 
 
 def start_room(p: Processes) -> None:
+    py = str(resolve_py())
     p.add(
         label="Room",
         colour=Col.CYAN,
-        args=[
-            "-m", "focus_island.room_server",
-            "--port", "8766",
-        ],
+        argv=[py, "-m", "focus_island.room_server", "--port", "8766"],
     )
 
 
 def start_frontend(p: Processes) -> None:
-    # Check node_modules
     nm = FRONTEND / "node_modules"
     if not nm.is_dir():
-        warn("frontend/node_modules not found — running npm install first…")
-        r = subprocess.run(["npm", "install"], cwd=str(FRONTEND), text=True)
+        warn("frontend/node_modules missing; running npm install...")
+        if os.name == "nt":
+            r = subprocess.run("npm install", cwd=str(FRONTEND), shell=True, text=True)
+        else:
+            r = subprocess.run(["npm", "install"], cwd=str(FRONTEND), text=True)
         if r.returncode != 0:
-            warn(f"npm install failed:\n  {r.stderr[:300]}")
+            warn("npm install failed; check Node.js and network.")
         else:
             ok("npm install complete")
+    # Windows: npm is npm.cmd; shell=False still resolves via PATHEXT
     p.add(
         label="Frontend",
         colour=Col.YELLOW,
-        args=["npm", "run", "electron:dev"],
+        argv=["npm", "run", "electron:dev"],
         cwd=FRONTEND,
+        set_pythonpath=False,
     )
 
 
@@ -215,12 +221,12 @@ def start_frontend(p: Processes) -> None:
 def main() -> None:
     print(f"""
 {Col.BOLD}{'='*60}
-   Focus Island  —  starting all services
+   Focus Island - starting all services
 {'='*60}{Col.RESET}
   Project root : {ROOT}
   Python       : {resolve_py()}
-  Ports         : API=8000  Backend WS=8765  Room WS=8766
-{Col.BOLD}{'─'*60}{Col.RESET}
+  Ports        : API=8000  Backend WS=8765  Room WS=8766
+{Col.BOLD}{'-'*60}{Col.RESET}
 """)
 
     procs = Processes()
@@ -231,8 +237,8 @@ def main() -> None:
         procs.terminate_all()
         sys.exit(0)
     signal.signal(signal.SIGINT, signal_handler)
-    if os.name == "nt":
-        signal.signal(signal.CTRL_BREAK_EVENT, signal_handler)
+    if os.name == "nt" and hasattr(signal, "SIGBREAK"):
+        signal.signal(signal.SIGBREAK, signal_handler)
 
     # Start backend first — give it a moment to bind ports
     start_backend(procs)
@@ -246,13 +252,12 @@ def main() -> None:
     start_frontend(procs)
 
     print(f"""
-{Col.BOLD}{'─'*60}
+{Col.BOLD}{'-'*60}
   All services launched.
-  Live mode / 主持房间 requires the Room service (port 8766).
-  If you see "Failed to connect to signaling server":
-    • confirm FocusIsland window says "Room" and shows no errors
-    • run:  netstat -ano | findstr :8766
-{Col.BOLD}{'─'*60}{Col.RESET}
+  Live / host room needs Room signaling on port 8766.
+  If "Failed to connect to signaling server": check Room logs above;
+  run: netstat -ano | findstr :8766
+{Col.BOLD}{'-'*60}{Col.RESET}
 """)
 
     # Block — keep the main thread alive while children run

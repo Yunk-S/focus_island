@@ -130,9 +130,10 @@ class ModelManager:
         hp_models.create_onnx_session = create_onnx_session_low_memory
         try:
             candidates = [
-                HeadPoseWeights.RESNET18,
+                # Smallest first — avoids "bad allocation" on memory-constrained setups
                 HeadPoseWeights.MOBILENET_V3_SMALL,
                 HeadPoseWeights.MOBILENET_V2,
+                HeadPoseWeights.RESNET18,
             ]
             last_exc: BaseException | None = None
             for weight in candidates:

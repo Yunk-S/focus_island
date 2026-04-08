@@ -24,6 +24,7 @@ MODEL_DIR = os.path.join(
 )
 os.environ["UNIFACE_CACHE_DIR"] = MODEL_DIR
 
+import gc
 import logging
 import time
 from dataclasses import dataclass, field
@@ -38,7 +39,7 @@ if TYPE_CHECKING:
     from uniface.headpose import HeadPose
     from uniface.types import HeadPoseResult
 
-from .onnx_util import resolve_onnx_providers
+from .onnx_util import create_onnx_session_low_memory, resolve_onnx_providers
 from .types import SystemInfo
 
 
@@ -113,6 +114,55 @@ class ModelManager:
         self._models_loaded = False
         self._load_start_time: float = 0
         self._total_load_time_ms: float = 0
+        self._headpose_variant: str = ""
+    
+    def _load_headpose_estimator(self, HeadPose: type) -> None:
+        """Load head pose with low-RAM session options and smaller-model fallbacks.
+
+        UniFace binds ``create_onnx_session`` in ``headpose.models`` at import time,
+        so we patch that name (not ``uniface.onnx_utils``) during load only.
+        Loading head pose before ArcFace/Landmark reduces peak memory at init time.
+        """
+        from uniface.constants import HeadPoseWeights
+        import uniface.headpose.models as hp_models
+
+        _orig_create = hp_models.create_onnx_session
+        hp_models.create_onnx_session = create_onnx_session_low_memory
+        try:
+            candidates = [
+                HeadPoseWeights.RESNET18,
+                HeadPoseWeights.MOBILENET_V3_SMALL,
+                HeadPoseWeights.MOBILENET_V2,
+            ]
+            last_exc: BaseException | None = None
+            for weight in candidates:
+                gc.collect()
+                try:
+                    logger.info("Loading head pose estimator (%s)...", weight.value)
+                    t0 = time.time()
+                    self.headpose_estimator = HeadPose(
+                        model_name=weight, providers=self.providers
+                    )
+                    self._headpose_variant = weight.value
+                    logger.info(
+                        "Head pose estimator loaded in %.1fms (%s)",
+                        (time.time() - t0) * 1000,
+                        weight.value,
+                    )
+                    return
+                except RuntimeError as e:
+                    last_exc = e
+                    logger.warning(
+                        "Head pose load failed (%s): %s", weight.value, e
+                    )
+                    self.headpose_estimator = None
+            msg = (
+                "Could not load any head pose model (often out of memory: close "
+                "other apps or use a machine with more RAM)."
+            )
+            raise RuntimeError(msg) from last_exc
+        finally:
+            hp_models.create_onnx_session = _orig_create
     
     def load_all_models(self) -> None:
         """Load all models (lazy import uniface to avoid scipy DLL crash)"""
@@ -141,7 +191,10 @@ class ModelManager:
             self.detector = RetinaFace(providers=self.providers)
         logger.info(f"Face detector loaded in {(time.time() - t0) * 1000:.1f}ms")
         
-        # 2. Load face recognition model (ArcFace)
+        # 2. Head pose (before ArcFace + landmarks to reduce peak RAM at ONNX init)
+        self._load_headpose_estimator(HeadPose)
+        
+        # 3. Load face recognition model (ArcFace)
         logger.info("Loading face recognizer (ArcFace)...")
         t0 = time.time()
         if self.recognition_model == "mobileface":
@@ -150,17 +203,11 @@ class ModelManager:
             self.recognizer = ArcFace(providers=self.providers)
         logger.info(f"Face recognizer loaded in {(time.time() - t0) * 1000:.1f}ms")
         
-        # 3. Load 106-point landmark detector
+        # 4. Load 106-point landmark detector
         logger.info("Loading 106-point landmark detector...")
         t0 = time.time()
         self.landmark_detector = Landmark106(providers=self.providers)
         logger.info(f"Landmark detector loaded in {(time.time() - t0) * 1000:.1f}ms")
-        
-        # 4. Load head pose estimation model
-        logger.info("Loading head pose estimator...")
-        t0 = time.time()
-        self.headpose_estimator = HeadPose(providers=self.providers)
-        logger.info(f"Head pose estimator loaded in {(time.time() - t0) * 1000:.1f}ms")
         
         self._models_loaded = True
         self._total_load_time_ms = (time.time() - self._load_start_time) * 1000
@@ -356,6 +403,7 @@ class ModelManager:
         return {
             "models_loaded": self._models_loaded,
             "total_load_time_ms": round(self._total_load_time_ms, 2),
+            "headpose_variant": self._headpose_variant,
             "detector": {
                 "count": self.detector_stats.inference_count,
                 "avg_ms": round(self.detector_stats.avg_inference_time_ms, 2)

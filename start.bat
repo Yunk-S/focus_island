@@ -44,16 +44,27 @@ if not exist "frontend\node_modules" (
 
 echo [3/3] Starting backend, room server, frontend...
 echo.
+echo   Order: Backend -^> Room signaling -^> Frontend
+echo   Live mode / 主持房间 needs BOTH backend AND room server (port 8766).
+echo.
 
 REM Launch separate .cmd files from script/ folder
 set "_ROOT=%~dp0"
 start "FocusIsland-Backend" cmd.exe /k call "%_ROOT%script\backend_server.cmd"
-timeout /t 2 /nobreak >nul
+REM Give Python time to bind API/WS before starting the next service
+timeout /t 3 /nobreak >nul
 start "FocusIsland-Room" cmd.exe /k call "%_ROOT%script\room_server.cmd"
-timeout /t 2 /nobreak >nul
+REM Room server must be listening before opening the app (live WebRTC signaling)
+timeout /t 4 /nobreak >nul
 start "FocusIsland-Frontend" cmd.exe /k call "%_ROOT%script\frontend_dev.cmd"
 
 echo Opened 3 windows: Backend, Room, Frontend.
-echo Backend WS ws://127.0.0.1:8765  API http://127.0.0.1:8000
+echo.
+echo   API (REST)     http://127.0.0.1:8000
+echo   Backend WS     ws://127.0.0.1:8765   (focus / frames)
+echo   Room signaling ws://127.0.0.1:8766   (REQUIRED for 直播 / 主持房间)
+echo.
+echo If "Failed to connect to signaling server": check FocusIsland-Room window
+echo for Python errors; ensure port 8766 is not used by another program.
 echo ========================================
 pause

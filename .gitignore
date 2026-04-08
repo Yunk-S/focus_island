@@ -22,11 +22,11 @@ user_faces/
 
 # IDE / AI 辅助工具
 .claude/
+.cursor/
 .gitnexus/
-.git/
+%USERPROFILE%/
 
 # AI Agent 配置（本地专用）
 Agents.md
 Claude.md
-.cursor/
 cursorInfo.json

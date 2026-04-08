@@ -206,11 +206,16 @@ def start_frontend(p: Processes) -> None:
             warn("npm install failed; check Node.js and network.")
         else:
             ok("npm install complete")
-    # Windows: npm is npm.cmd; shell=False still resolves via PATHEXT
+    # Windows: Popen(["npm", ...]) often raises WinError 2 — npm is a .cmd, not an .exe.
+    # cmd.exe applies PATHEXT and finds npm.cmd on PATH.
+    if os.name == "nt":
+        frontend_argv = ["cmd", "/c", "npm run electron:dev"]
+    else:
+        frontend_argv = ["npm", "run", "electron:dev"]
     p.add(
         label="Frontend",
         colour=Col.YELLOW,
-        argv=["npm", "run", "electron:dev"],
+        argv=frontend_argv,
         cwd=FRONTEND,
         set_pythonpath=False,
     )

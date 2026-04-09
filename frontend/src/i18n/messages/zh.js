@@ -189,6 +189,7 @@ export default {
     cameraHint: '摄像头用于检测你的专注状态。\n你的画面仅在本地处理，不会被上传。',
     allowCamera: '允许访问摄像头',
     privacyModeOpt: '隐私模式（不使用摄像头）',
+    previewLoading: '正在加载画面…',
     cancel: '取消',
     durations: '{{n}} 分钟',
   },

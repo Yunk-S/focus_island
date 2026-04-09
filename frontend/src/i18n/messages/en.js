@@ -190,6 +190,7 @@ export default {
     cameraHint: 'Camera is used to detect your focus state.\nYour video is processed locally and never uploaded.',
     allowCamera: 'Allow camera',
     privacyModeOpt: 'Privacy mode (no camera)',
+    previewLoading: 'Loading preview…',
     cancel: 'Cancel',
     durations: '{{n}} min',
   },

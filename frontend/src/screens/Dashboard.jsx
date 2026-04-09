@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
@@ -50,6 +50,7 @@ function Dashboard() {
     resumeSession,
     sendMessage,
     focusSessionError,
+    getApiBaseUrl,
   } = useBackend();
   
   // Local state
@@ -62,9 +63,8 @@ function Dashboard() {
   const [focusDuration, setFocusDuration] = useState(25);
   const [totalPoints, setTotalPoints] = useState(user?.totalPoints || 0);
   
-  // Camera ref
-  const videoRef = useRef(null);
-  const canvasRef = useRef(null);
+  /** Backend MJPEG preview (same device as OpenCV — avoids Windows dual-open black screen). */
+  const [cameraPreviewUrl, setCameraPreviewUrl] = useState(null);
   
   // Timer effect
   useEffect(() => {
@@ -101,40 +101,30 @@ function Dashboard() {
     };
   }, [isConnected, sendMessage, cameraAgreed]);
   
-  // Initialize camera
   useEffect(() => {
-    if (cameraEnabled && !privacyMode) {
-      startCamera();
-    } else {
-      stopCamera();
+    if (!cameraEnabled || privacyMode || !isConnected) {
+      setCameraPreviewUrl(null);
+      return undefined;
     }
-    return () => stopCamera();
-  }, [cameraEnabled, privacyMode]);
-  
-  const startCamera = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: 640, height: 480, facingMode: 'user' },
-      });
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play().catch(() => {});
+    let cancelled = false;
+    void (async () => {
+      try {
+        const base = await getApiBaseUrl();
+        if (!cancelled) {
+          setCameraPreviewUrl(`${base}/api/video/stream`);
+        }
+      } catch (e) {
+        console.error('Failed to resolve camera preview URL:', e);
+        if (!cancelled) setCameraPreviewUrl(null);
       }
-    } catch (err) {
-      console.error('Failed to start camera:', err);
-    }
-  };
-  
-  const stopCamera = () => {
-    if (videoRef.current && videoRef.current.srcObject) {
-      const tracks = videoRef.current.srcObject.getTracks();
-      tracks.forEach(track => track.stop());
-      videoRef.current.srcObject = null;
-    }
-  };
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [cameraEnabled, privacyMode, isConnected, getApiBaseUrl]);
   
   const handleLogout = () => {
-    stopCamera();
+    setCameraPreviewUrl(null);
     logout();
     navigate('/login');
   };
@@ -333,16 +323,22 @@ function Dashboard() {
               </button>
             </div>
             
-            {/* Video/Privacy View */}
+            {/* Video/Privacy View — MJPEG from backend (OpenCV already holds the camera). */}
             <div className="relative aspect-video rounded-2xl overflow-hidden bg-black/50">
               {cameraEnabled && !privacyMode ? (
-                <video
-                  ref={videoRef}
-                  autoPlay
-                  playsInline
-                  muted
-                  className="w-full h-full object-cover transform -scale-x-100"
-                />
+                cameraPreviewUrl ? (
+                  <img
+                    key={cameraPreviewUrl}
+                    src={cameraPreviewUrl}
+                    alt=""
+                    className="absolute inset-0 z-0 h-full w-full object-cover [transform:scaleX(-1)]"
+                  />
+                ) : (
+                  <div className="absolute inset-0 z-0 flex flex-col items-center justify-center gap-2">
+                    <div className="size-8 animate-spin rounded-full border-2 border-accent-mint/30 border-t-accent-mint" />
+                    <span className="text-text-muted text-xs">{t('dashboard.previewLoading')}</span>
+                  </div>
+                )
               ) : (
                 <div className="absolute inset-0 flex flex-col items-center justify-center">
                   <CameraOff className="w-12 h-12 text-text-muted mb-2" />
@@ -351,11 +347,11 @@ function Dashboard() {
                   </span>
                 </div>
               )}
-              
+
               {/* Face Detection Overlay */}
-              {sessionState.has_face && (
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="w-32 h-40 border-2 border-accent-mint/50 rounded-lg animate-pulse" />
+              {cameraEnabled && !privacyMode && sessionState.has_face && (
+                <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
+                  <div className="h-40 w-32 rounded-lg border-2 border-accent-mint/50 animate-pulse" />
                 </div>
               )}
             </div>

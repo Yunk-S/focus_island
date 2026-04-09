@@ -172,6 +172,8 @@ export default {
     totalPoints: 'Total points',
     rank: 'Rank',
     focusRate: 'Focus rate',
+    sessionFocusMinutes: 'Focused this session (min)',
+    cumulativeHint: 'Stopwatch mode: time counts up after Start. Focus rate = backend focused minutes ÷ elapsed time.',
     settings: 'Settings',
     notif: 'Notifications',
     notifHint: 'Focus reminders & milestones',

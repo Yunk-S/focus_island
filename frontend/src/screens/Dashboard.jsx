@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
@@ -59,23 +59,32 @@ function Dashboard() {
   const [cameraEnabled, setCameraEnabled] = useState(false);
   const [privacyMode, setPrivacyMode] = useState(true);
   const [cameraAgreed, setCameraAgreed] = useState(false);
-  const [currentTime, setCurrentTime] = useState(25 * 60); // 25 minutes in seconds
-  const [focusDuration, setFocusDuration] = useState(25);
+  /** 累计专注会话经过的秒数（正计时，非倒计时） */
+  const [elapsedSecs, setElapsedSecs] = useState(0);
+  const elapsedTimerRef = useRef(null);
+  /** 上一场结束后的专注率，空闲时右下角仍可读 */
+  const [lastSessionFocusRate, setLastSessionFocusRate] = useState(null);
   const [totalPoints, setTotalPoints] = useState(user?.totalPoints || 0);
   
   /** Backend MJPEG preview (same device as OpenCV — avoids Windows dual-open black screen). */
   const [cameraPreviewUrl, setCameraPreviewUrl] = useState(null);
   
-  // Timer effect
   useEffect(() => {
-    let interval;
-    if (isFocusing && !isPaused && currentTime > 0) {
-      interval = setInterval(() => {
-        setCurrentTime(prev => prev - 1);
+    if (isFocusing && !isPaused) {
+      elapsedTimerRef.current = setInterval(() => {
+        setElapsedSecs((s) => s + 1);
       }, 1000);
+    } else if (elapsedTimerRef.current) {
+      clearInterval(elapsedTimerRef.current);
+      elapsedTimerRef.current = null;
     }
-    return () => clearInterval(interval);
-  }, [isFocusing, isPaused, currentTime]);
+    return () => {
+      if (elapsedTimerRef.current) {
+        clearInterval(elapsedTimerRef.current);
+        elapsedTimerRef.current = null;
+      }
+    };
+  }, [isFocusing, isPaused]);
   
   // Update points from backend
   useEffect(() => {
@@ -130,9 +139,10 @@ function Dashboard() {
   };
   
   const handleStartFocus = () => {
+    setElapsedSecs(0);
+    setLastSessionFocusRate(null);
     setIsFocusing(true);
     setIsPaused(false);
-    setCurrentTime(focusDuration * 60);
     startSession(user?.id);
   };
   
@@ -146,16 +156,38 @@ function Dashboard() {
   };
   
   const handleStopFocus = () => {
+    const elapsedMin = elapsedSecs / 60;
+    const backendMin = sessionState?.focus_time ?? 0;
+    const rate =
+      elapsedMin > 0 ? Math.min(100, Math.round((backendMin / elapsedMin) * 1000) / 10) : 0;
+    setLastSessionFocusRate(rate);
     setIsFocusing(false);
     setIsPaused(false);
     stopSession();
   };
   
-  const formatTime = (seconds) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  const formatElapsed = (secs) => {
+    const h = Math.floor(secs / 3600);
+    const m = Math.floor((secs % 3600) / 60);
+    const s = secs % 60;
+    if (h > 0) {
+      return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    }
+    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
   };
+
+  /** 后端 sessionState.focus_time 为「分钟」 */
+  const backendFocusMin = sessionState?.focus_time ?? 0;
+  const elapsedMinLive = elapsedSecs / 60;
+  const focusRateLive =
+    isFocusing && elapsedMinLive > 0
+      ? Math.min(100, Math.round((backendFocusMin / elapsedMinLive) * 1000) / 10)
+      : 0;
+  const focusRateDisplay = isFocusing
+    ? focusRateLive
+    : lastSessionFocusRate != null
+      ? lastSessionFocusRate
+      : null;
   
   const getStateColor = (state) => {
     switch (state) {
@@ -166,16 +198,8 @@ function Dashboard() {
     }
   };
   
-  const getStateGlow = (state) => {
-    switch (state) {
-      case 'focused': return 'shadow-glow-mint';
-      case 'warning': return 'shadow-[0_0_30px_rgba(234,179,8,0.4)]';
-      case 'interrupted': return 'shadow-[0_0_30px_rgba(248,113,113,0.4)]';
-      default: return '';
-    }
-  };
-  
-  const progress = ((focusDuration * 60 - currentTime) / (focusDuration * 60)) * 100;
+  /** 圆环进度 = 当前专注率（实时） */
+  const ringProgress = isFocusing ? focusRateLive : 0;
 
   const sessionStateLabel = useCallback(
     (state) => {
@@ -435,7 +459,7 @@ function Dashboard() {
                 strokeWidth="8"
                 strokeLinecap="round"
                 strokeDasharray={`${2 * Math.PI * 130}`}
-                animate={{ strokeDashoffset: `${2 * Math.PI * 130 * (1 - progress / 100)}` }}
+                animate={{ strokeDashoffset: `${2 * Math.PI * 130 * (1 - ringProgress / 100)}` }}
                 transition={{ duration: 0.5 }}
               />
               {/* Glow effect */}
@@ -454,7 +478,7 @@ function Dashboard() {
                 transition={{ duration: 2, repeat: Infinity }}
               >
                 <span className="text-6xl font-display font-bold tracking-wider">
-                  {formatTime(currentTime)}
+                  {formatElapsed(elapsedSecs)}
                 </span>
               </motion.div>
               <p className="text-text-muted mt-2">
@@ -467,21 +491,23 @@ function Dashboard() {
             </div>
           </div>
           
-          {/* Focus Stats */}
+          {/* Focus Stats — focus_time 已为分钟 */}
           <div className="flex items-center gap-8 mb-8">
             <div className="text-center">
-              <p className="text-2xl font-bold text-accent-mint">{Math.floor(sessionState.focus_time / 60)}</p>
-              <p className="text-xs text-text-muted">{t('dashboard.minToday')}</p>
+              <p className="text-2xl font-bold text-accent-mint">{Math.floor(backendFocusMin)}</p>
+              <p className="text-xs text-text-muted">{t('dashboard.sessionFocusMinutes')}</p>
             </div>
             <div className="w-px h-10 bg-white/10" />
             <div className="text-center">
-              <p className="text-2xl font-bold text-accent-lavender">{Math.floor(sessionState.focus_time / 60) * 10}</p>
+              <p className="text-2xl font-bold text-accent-lavender">{sessionState.total_points ?? 0}</p>
               <p className="text-xs text-text-muted">{t('dashboard.pointsEarned')}</p>
             </div>
             <div className="w-px h-10 bg-white/10" />
             <div className="text-center">
-              <p className="text-2xl font-bold text-accent-gold">0</p>
-              <p className="text-xs text-text-muted">{t('dashboard.milestones')}</p>
+              <p className="text-2xl font-bold text-accent-gold">
+                {isFocusing ? `${focusRateLive.toFixed(1)}%` : '—'}
+              </p>
+              <p className="text-xs text-text-muted">{t('ambient.focusRate')}</p>
             </div>
           </div>
 
@@ -531,24 +557,10 @@ function Dashboard() {
             )}
           </div>
           
-          {/* Duration Selector */}
           {!isFocusing && (
-            <div className="mt-6 flex items-center gap-4">
-              <span className="text-text-muted text-sm">{t('dashboard.duration')}</span>
-              {[25, 45, 60].map(duration => (
-                <button
-                  key={duration}
-                  onClick={() => setFocusDuration(duration)}
-                  className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors ${
-                    focusDuration === duration
-                      ? 'bg-accent-mint/20 text-accent-mint border border-accent-mint/50'
-                      : 'glass text-text-secondary hover:text-text-primary'
-                  }`}
-                >
-                  {duration} {t('dashboard.min')}
-                </button>
-              ))}
-            </div>
+            <p className="mt-6 max-w-sm text-center text-xs text-text-muted">
+              {t('dashboard.cumulativeHint')}
+            </p>
           )}
         </motion.div>
         
@@ -648,7 +660,19 @@ function Dashboard() {
               </div>
               <div className="glass rounded-xl p-3 text-center">
                 <Shield className="w-5 h-5 mx-auto mb-2 text-accent-gold" />
-                <p className="text-lg font-bold">98%</p>
+                <p
+                  className={`text-lg font-bold ${
+                    focusRateDisplay == null
+                      ? 'text-text-muted'
+                      : focusRateDisplay >= 80
+                        ? 'text-accent-mint'
+                        : focusRateDisplay >= 50
+                          ? 'text-yellow-400'
+                          : 'text-red-400'
+                  }`}
+                >
+                  {focusRateDisplay != null ? `${focusRateDisplay.toFixed(1)}%` : '—'}
+                </p>
                 <p className="text-xs text-text-muted">{t('dashboard.focusRate')}</p>
               </div>
             </div>

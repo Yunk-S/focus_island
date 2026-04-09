@@ -171,6 +171,8 @@ export default {
     totalPoints: '总积分',
     rank: '排名',
     focusRate: '专注率',
+    sessionFocusMinutes: '本会话专注（分）',
+    cumulativeHint: '正计时：点击开始专注后累计时长；专注率 = 后端统计专注分钟 ÷ 经过时间。',
     settings: '设置',
     notif: '通知',
     notifHint: '专注提醒与里程碑',

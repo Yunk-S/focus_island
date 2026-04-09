@@ -192,7 +192,15 @@ export default {
     privacyModeOpt: 'Privacy mode (no camera)',
     previewLoading: 'Loading preview…',
     cancel: 'Cancel',
+    connecting: 'Connecting…',
     durations: '{{n}} min',
+  },
+  ambient: {
+    readyToFocus: '准备专注',
+    sessionEnded: '会话已结束',
+    focusRate: '专注率',
+    focused: '专注中',
+    totalElapsed: '总时长',
   },
   live: {
     badgeLive: 'Live',

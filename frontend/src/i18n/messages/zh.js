@@ -191,7 +191,15 @@ export default {
     privacyModeOpt: '隐私模式（不使用摄像头）',
     previewLoading: '正在加载画面…',
     cancel: '取消',
+    connecting: '正在连接…',
     durations: '{{n}} 分钟',
+  },
+  ambient: {
+    readyToFocus: 'Ready to focus',
+    sessionEnded: 'Session ended',
+    focusRate: 'Focus rate',
+    focused: 'Focused',
+    totalElapsed: 'Total time',
   },
   live: {
     badgeLive: '直播',

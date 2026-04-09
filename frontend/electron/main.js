@@ -82,7 +82,20 @@ function stopRoomServer() {
 /**
  * Start room_server on 8766 if the port is free; otherwise assume another process
  * (e.g. python start.py) already serves signaling.
+ * Waits for the server to be fully ready before resolving.
  */
+async function waitForHttp(url, timeoutMs = 15000, intervalMs = 200) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const res = await fetch(url, { method: 'GET' });
+      if (res.ok) return true;
+    } catch (_) { /* not ready yet */ }
+    await new Promise(r => setTimeout(r, intervalMs));
+  }
+  return false;
+}
+
 function startRoomServerIfNeeded(backendDir) {
   return new Promise((resolve) => {
     checkPortFree(DEFAULT_ROOM_WS_PORT, '127.0.0.1').then((free) => {
@@ -150,7 +163,19 @@ function startRoomServerIfNeeded(backendDir) {
         });
 
         console.log('[Main] Room signaling server started (pid:', roomProcess.pid, ')');
-        resolve(true);
+
+        // Wait for the room server to be fully ready before resolving
+        const healthUrl = `http://127.0.0.1:${DEFAULT_ROOM_WS_PORT}/health`;
+        console.log('[Main] Waiting for room server to be ready at', healthUrl, '...');
+        waitForHttp(healthUrl, 15000).then((ready) => {
+          if (ready) {
+            console.log('[Main] Room signaling server is ready');
+            resolve(true);
+          } else {
+            console.warn('[Main] Room signaling server did not become ready in time, but continuing anyway');
+            resolve(true); // Don't block startup, let frontend handle connection issues
+          }
+        });
       } catch (err) {
         console.error('[Main] Error spawning room server:', err);
         resolve(false);

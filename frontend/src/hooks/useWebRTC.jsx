@@ -44,6 +44,10 @@ function getSignalUrl() {
 
 const WebRTCContext = createContext(null);
 
+// Reconnect attempt settings
+const MAX_RECONNECT_ATTEMPTS = 3;
+const RECONNECT_DELAY_MS = 3000;
+
 export function WebRTCProvider({ children }) {
   const wsRef = useRef(null);
   const myClientIdRef = useRef(null);
@@ -60,6 +64,7 @@ export function WebRTCProvider({ children }) {
   const [signalingState, setSignalingState] = useState('disconnected');
   const [roomError, setRoomError] = useState(null);
   const [isHost, setIsHost] = useState(false);
+  const reconnectAttemptsRef = useRef(0);
 
   // ── Room data ────────────────────────────────────────────────────────────────
   const [chatMessages, setChatMessages] = useState([]);
@@ -408,16 +413,29 @@ export function WebRTCProvider({ children }) {
 
       connectTimeoutRef.current = setTimeout(() => {
         if (wsRef.current === ws && ws.readyState !== WebSocket.OPEN) {
-          setRoomError(
-            'Signaling server unreachable. Start the room server (port 8766) or check firewall.'
-          );
-          setSignalingState('disconnected');
-          try { ws.close(); } catch { /* ignore */ }
+          // Attempt to retry connection if we haven't exceeded max attempts
+          if (reconnectAttemptsRef.current < MAX_RECONNECT_ATTEMPTS) {
+            reconnectAttemptsRef.current += 1;
+            console.log(`[WebRTC] Connection attempt ${reconnectAttemptsRef.current} failed, retrying in ${RECONNECT_DELAY_MS}ms...`);
+            ws.close();
+            setTimeout(() => {
+              reconnectAttemptsRef.current = 0; // Reset for next attempt
+              connectSignaling();
+            }, RECONNECT_DELAY_MS);
+          } else {
+            setRoomError(
+              'Signaling server unreachable. Start the room server (port 8766) or check firewall.'
+            );
+            setSignalingState('disconnected');
+            reconnectAttemptsRef.current = 0;
+            try { ws.close(); } catch { /* ignore */ }
+          }
         }
       }, 12000);
 
       ws.onopen = () => {
         console.log('[WebRTC] Signaling connected', url);
+        reconnectAttemptsRef.current = 0; // Reset on successful connection
       };
 
       ws.onmessage = (event) => {
@@ -430,7 +448,7 @@ export function WebRTCProvider({ children }) {
 
       ws.onerror = () => {
         console.error('[WebRTC] Signaling WebSocket error');
-        setRoomError('Failed to connect to signaling server.');
+        // Let the timeout handle retry logic
       };
 
       ws.onclose = () => {

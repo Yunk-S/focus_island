@@ -120,12 +120,6 @@ pip install -r requirements.txt
 start.bat
 ```
 
-或 / Or:
-
-```powershell
-.\start.ps1
-```
-
 脚本将依次启动 / Script starts these in order:
 
 | 窗口 Window | 端口 Port | 说明 Description |

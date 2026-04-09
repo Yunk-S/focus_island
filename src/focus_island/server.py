@@ -302,6 +302,7 @@ class ServerMode:
             # Session control - new flow: verify/bind face first, then start focus
             
             # 1. Verify face (don't save, don't start focus)
+            # 必须严格验证指定用户的人脸，确保账号个人独有机制
             @app.post("/api/face/verify")
             async def verify_face(
                 user_id: str = "default_user",
@@ -315,17 +316,40 @@ class ServerMode:
                             user_id=user_id,
                             language=language
                         )
+                        # 严格验证：必须传入 user_id 并匹配成功才算验证通过
+                        # 如果未绑定或未传入 user_id，返回未验证
+                        is_bound = self.workflow.authenticator.has_bound_face(user_id)
+                        if not is_bound:
+                            return {
+                                "success": False,
+                                "is_verified": False,
+                                "is_bound": False,
+                                "similarity": 0.0,
+                                "error": "该账号未绑定人脸",
+                                "error_code": "NOT_BOUND"
+                            }
+                        # 只有指定用户的特征匹配成功才算验证通过
                         return result
                     return {"success": False, "error": "No frame available"}
                 return {"success": False, "error": "Not initialized"}
             
-            # 2. Bind face (save to local)
+            # 2. Bind face (save to local) - 防止重复绑定
             @app.post("/api/face/bind")
             async def bind_face(
                 user_id: str = "default_user",
                 language: str = "zh"
             ):
                 if self.workflow:
+                    # 先检查是否已绑定
+                    is_already_bound = self.workflow.authenticator.has_bound_face(user_id)
+                    if is_already_bound:
+                        return {
+                            "success": False,
+                            "is_bound": True,
+                            "error": "该账号已绑定过人脸，无法重复绑定",
+                            "error_code": "ALREADY_BOUND"
+                        }
+                    
                     frame = self.get_latest_frame()
                     if frame is not None:
                         result = self.workflow.bind_face(
@@ -505,11 +529,23 @@ class ServerMode:
                                 language = data.get("data", {}).get("language", "zh")
                                 frame = self.get_latest_frame()
                                 if frame and self.workflow:
-                                    result = self.workflow.verify_face(
-                                        image=frame,
-                                        user_id=user_id,
-                                        language=language
-                                    )
+                                    # 检查是否已绑定
+                                    is_bound = self.workflow.authenticator.has_bound_face(user_id)
+                                    if not is_bound:
+                                        result = {
+                                            "success": False,
+                                            "is_verified": False,
+                                            "is_bound": False,
+                                            "similarity": 0.0,
+                                            "error": "该账号未绑定人脸",
+                                            "error_code": "NOT_BOUND"
+                                        }
+                                    else:
+                                        result = self.workflow.verify_face(
+                                            image=frame,
+                                            user_id=user_id,
+                                            language=language
+                                        )
                                     await websocket.send(_ws_json({
                                         "type": "face_verified",
                                         "data": result
@@ -520,11 +556,21 @@ class ServerMode:
                                 language = data.get("data", {}).get("language", "zh")
                                 frame = self.get_latest_frame()
                                 if frame and self.workflow:
-                                    result = self.workflow.bind_face(
-                                        image=frame,
-                                        user_id=user_id,
-                                        language=language
-                                    )
+                                    # 先检查是否已绑定
+                                    is_already_bound = self.workflow.authenticator.has_bound_face(user_id)
+                                    if is_already_bound:
+                                        result = {
+                                            "success": False,
+                                            "is_bound": True,
+                                            "error": "该账号已绑定过人脸，无法重复绑定",
+                                            "error_code": "ALREADY_BOUND"
+                                        }
+                                    else:
+                                        result = self.workflow.bind_face(
+                                            image=frame,
+                                            user_id=user_id,
+                                            language=language
+                                        )
                                     await websocket.send(_ws_json({
                                         "type": "face_bound",
                                         "data": result

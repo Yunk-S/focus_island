@@ -96,7 +96,8 @@ class I18n:
             # Errors
             "error_no_face": "Please face the camera",
             "error_face_not_bound": "Please bind your face first",
-            "error_face_detected": "Please click Start first"
+            "error_face_detected": "Please click Start first",
+            "error_face_already_bound": "该账号已绑定过人脸，无法重复绑定"
         },
         "en": {
             # States
@@ -143,7 +144,8 @@ class I18n:
             # Errors
             "error_no_face": "Please face the camera",
             "error_face_not_bound": "Please bind your face first",
-            "error_face_detected": "Please click Start first"
+            "error_face_detected": "Please click Start first",
+            "error_face_already_bound": "This account has already bound a face, cannot bind again"
         }
     }
     
@@ -515,6 +517,17 @@ class FocusWorkFlow:
         I18n.set_locale(language)
         
         logger.info(f"Binding face: user_id={user_id}")
+        
+        # 检查是否已绑定过人脸
+        was_bound = self.authenticator.has_bound_face(user_id)
+        if was_bound:
+            return {
+                "success": False,
+                "is_bound": True,
+                "was_bound": True,
+                "error": I18n.t("error_face_already_bound"),
+                "error_code": "ALREADY_BOUND"
+            }
         
         # Detect face
         faces = self.model_manager.detect_faces(image)

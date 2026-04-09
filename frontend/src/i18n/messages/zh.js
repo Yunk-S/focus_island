@@ -289,6 +289,7 @@ export default {
     boundYes: '是',
     boundNo: '否',
     bindBtn: '采集并绑定',
+    alreadyBoundBtn: '该账号已绑定',
     verifyBtn: '验证当前人脸',
     refreshStatus: '刷新状态',
     continueHome: '进入主页',

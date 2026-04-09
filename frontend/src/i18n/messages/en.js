@@ -290,6 +290,7 @@ export default {
     boundYes: 'Yes',
     boundNo: 'No',
     bindBtn: 'Capture & bind',
+    alreadyBoundBtn: 'Already bound',
     verifyBtn: 'Verify current face',
     refreshStatus: 'Refresh status',
     continueHome: 'Continue to home',

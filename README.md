@@ -115,12 +115,6 @@ Double-click or run in project root:
 start.bat
 ```
 
-Or:
-
-```powershell
-.\start.ps1
-```
-
 The script starts in order:
 
 | Window | Port | Description |

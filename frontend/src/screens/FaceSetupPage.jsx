@@ -160,12 +160,16 @@ function FaceSetupPage() {
         <div className="flex flex-col gap-3">
           <button
             type="button"
-            disabled={loading || !isConnected}
+            disabled={loading || !isConnected || bound === true}
             onClick={() => void postFace('/api/face/bind')}
-            className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-primary to-pink-500 py-3.5 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/25 transition-opacity disabled:opacity-50"
+            className={`flex w-full items-center justify-center gap-2 rounded-xl py-3.5 text-sm font-semibold shadow-lg shadow-primary/25 transition-opacity ${
+              bound === true
+                ? 'bg-gray-500/30 text-gray-400 cursor-not-allowed opacity-60'
+                : 'bg-gradient-to-r from-primary to-pink-500 text-primary-foreground hover:opacity-90 disabled:opacity-50'
+            }`}
           >
             {loading ? <Loader2 className="size-4 animate-spin" /> : null}
-            {t('faceSetup.bindBtn')}
+            {bound === true ? t('faceSetup.alreadyBoundBtn') : t('faceSetup.bindBtn')}
           </button>
           <button
             type="button"

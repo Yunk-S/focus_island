@@ -62,6 +62,13 @@ function Dashboard() {
   /** 累计专注会话经过的秒数（正计时，非倒计时） */
   const [elapsedSecs, setElapsedSecs] = useState(0);
   const elapsedTimerRef = useRef(null);
+  /** 本会话内处于 focused 的秒数（后端 preview 或身份未验证时 focus_time_min 可能恒为 0） */
+  const [clientFocusedSecs, setClientFocusedSecs] = useState(0);
+  /** 预览流（无正式 session）下的总秒数与 focused 秒数，用于右下角专注率 */
+  const [previewElapsedSecs, setPreviewElapsedSecs] = useState(0);
+  const [previewFocusedSecs, setPreviewFocusedSecs] = useState(0);
+  const currentStateRef = useRef(sessionState.current_state);
+  currentStateRef.current = sessionState.current_state;
   /** 上一场结束后的专注率，空闲时右下角仍可读 */
   const [lastSessionFocusRate, setLastSessionFocusRate] = useState(null);
   const [totalPoints, setTotalPoints] = useState(user?.totalPoints || 0);
@@ -73,6 +80,9 @@ function Dashboard() {
     if (isFocusing && !isPaused) {
       elapsedTimerRef.current = setInterval(() => {
         setElapsedSecs((s) => s + 1);
+        if (currentStateRef.current === 'focused') {
+          setClientFocusedSecs((s) => s + 1);
+        }
       }, 1000);
     } else if (elapsedTimerRef.current) {
       clearInterval(elapsedTimerRef.current);
@@ -85,6 +95,28 @@ function Dashboard() {
       }
     };
   }, [isFocusing, isPaused]);
+
+  const previewModeActive =
+    !isFocusing &&
+    sessionState.preview_mode === true &&
+    cameraAgreed &&
+    !privacyMode &&
+    isConnected;
+
+  useEffect(() => {
+    if (!previewModeActive) {
+      setPreviewElapsedSecs(0);
+      setPreviewFocusedSecs(0);
+      return undefined;
+    }
+    const id = setInterval(() => {
+      setPreviewElapsedSecs((s) => s + 1);
+      if (currentStateRef.current === 'focused') {
+        setPreviewFocusedSecs((s) => s + 1);
+      }
+    }, 1000);
+    return () => clearInterval(id);
+  }, [previewModeActive]);
   
   // Update points from backend
   useEffect(() => {
@@ -140,6 +172,9 @@ function Dashboard() {
   
   const handleStartFocus = () => {
     setElapsedSecs(0);
+    setClientFocusedSecs(0);
+    setPreviewElapsedSecs(0);
+    setPreviewFocusedSecs(0);
     setLastSessionFocusRate(null);
     setIsFocusing(true);
     setIsPaused(false);
@@ -158,9 +193,11 @@ function Dashboard() {
   const handleStopFocus = () => {
     const elapsedMin = elapsedSecs / 60;
     const backendMin = sessionState?.focus_time ?? 0;
+    const effectiveMin = Math.max(backendMin, clientFocusedSecs / 60);
     const rate =
-      elapsedMin > 0 ? Math.min(100, Math.round((backendMin / elapsedMin) * 1000) / 10) : 0;
+      elapsedMin > 0 ? Math.min(100, Math.round((effectiveMin / elapsedMin) * 1000) / 10) : 0;
     setLastSessionFocusRate(rate);
+    setClientFocusedSecs(0);
     setIsFocusing(false);
     setIsPaused(false);
     stopSession();
@@ -178,16 +215,23 @@ function Dashboard() {
 
   /** 后端 sessionState.focus_time 为「分钟」 */
   const backendFocusMin = sessionState?.focus_time ?? 0;
+  const effectiveFocusMinLive = Math.max(backendFocusMin, clientFocusedSecs / 60);
   const elapsedMinLive = elapsedSecs / 60;
   const focusRateLive =
     isFocusing && elapsedMinLive > 0
-      ? Math.min(100, Math.round((backendFocusMin / elapsedMinLive) * 1000) / 10)
+      ? Math.min(100, Math.round((effectiveFocusMinLive / elapsedMinLive) * 1000) / 10)
       : 0;
+  const previewFocusRate =
+    previewModeActive && previewElapsedSecs > 0
+      ? Math.min(100, Math.round((previewFocusedSecs / previewElapsedSecs) * 1000) / 10)
+      : null;
   const focusRateDisplay = isFocusing
     ? focusRateLive
     : lastSessionFocusRate != null
       ? lastSessionFocusRate
-      : null;
+      : previewFocusRate != null
+        ? previewFocusRate
+        : null;
   
   const getStateColor = (state) => {
     switch (state) {

@@ -49,6 +49,8 @@ export function BackendProvider({ children }) {
     head_pose: { pitch: 0, yaw: 0, roll: 0 },
     eye_data: { ear_avg: 0 },
     identity: { verified: false, similarity: 0 },
+    /** True when frame_result is from process_preview_frame (no real session). */
+    preview_mode: false,
     // Face status
     face_status: {
       is_bound: false,      // Whether face is bound
@@ -175,7 +177,8 @@ export function BackendProvider({ children }) {
               session_id: data.workflow?.session_id ?? prev.session_id,
               total_points: data.session.stats?.total_points ?? prev.total_points,
               focus_time: data.session.stats?.focus_time_min ?? prev.focus_time,
-              current_state: data.session.state || prev.current_state
+              current_state: data.session.state || prev.current_state,
+              preview_mode: data.workflow?.preview === true,
             }));
           }
           if (data.perception) {

@@ -86,7 +86,7 @@ export function WebRTCProvider({ children }) {
         console.error('[WebRTC] sendWs error:', e);
       }
     }
-    console.warn('[WebRTC] sendWs failed: WebSocket not available, readyState:', ws?.readyState);
+    console.warn('[WebRTC] sendWs failed: WebSocket not available, readyState:', ws?.readyState, 'isSocketReady:', isSocketReadyRef.current);
   }, []);
 
   const requestCamera = useCallback(async () => {
@@ -110,6 +110,35 @@ export function WebRTCProvider({ children }) {
       return null;
     });
   }, []);
+
+  // Toggle camera: enable=true turns on, enable=false turns off
+  // For now just toggles the tracks enabled state
+  const toggleCamera = useCallback(async (enable) => {
+    console.log('[WebRTC] toggleCamera:', enable, 'localStream:', !!localStream);
+    if (enable) {
+      // Turn camera ON
+      if (!localStream) {
+        // Need to get camera permission
+        const stream = await requestCamera();
+        console.log('[WebRTC] toggleCamera: got new stream', !!stream);
+        return stream;
+      }
+      // Re-enable existing video track
+      const videoTrack = localStream.getVideoTracks()[0];
+      if (videoTrack) {
+        videoTrack.enabled = true;
+      }
+    } else {
+      // Turn camera OFF - disable video tracks (don't stop them)
+      if (localStream) {
+        const videoTrack = localStream.getVideoTracks()[0];
+        if (videoTrack) {
+          videoTrack.enabled = false;
+        }
+      }
+    }
+    return localStream;
+  }, [localStream, requestCamera]);
 
   const attachStream = useCallback((clientId, stream) => {
     setRemoteStreams((prev) => ({ ...prev, [clientId]: stream }));
@@ -691,6 +720,7 @@ export function WebRTCProvider({ children }) {
     // Actions
     requestCamera,
     releaseCamera,
+    toggleCamera,
     createRoom,
     joinRoom,
     leaveRoom,

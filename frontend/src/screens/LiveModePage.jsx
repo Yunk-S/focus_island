@@ -66,26 +66,39 @@ function FocusBadge({ state, ear, className = '' }) {
 }
 
 // ─── Video tile with focus overlay ────────────────────────────────────────────
-function VideoTile({ stream, clientId, userName, focusInfo, isLocal, isHost, isHandUp, micOn, camOn, onRequestCamera, cameraError, t }) {
+function VideoTile({ stream, clientId, userName, focusInfo, isLocal, isHost, isHandUp, micOn, camOn, onToggleCamera, onRequestCamera, cameraError, t }) {
   const videoRef = useRef(null);
   useEffect(() => {
-    if (videoRef.current && stream) {
-      videoRef.current.srcObject = stream;
-      videoRef.current.play().catch(() => {});
+    if (videoRef.current) {
+      if (stream) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play().catch(console.error);
+      } else {
+        videoRef.current.srcObject = null;
+      }
     }
   }, [stream]);
+
+  const handleClick = () => {
+    if (isLocal && !stream && onRequestCamera) {
+      onRequestCamera();
+    }
+  };
 
   const colors = focusInfo ? (FOCUS_COLORS[focusInfo.focus_state] || FOCUS_COLORS.idle) : FOCUS_COLORS.idle;
   const ear = focusInfo?.ear || 0;
 
   return (
-    <div className={`group relative flex min-h-[160px] flex-col overflow-hidden rounded-2xl border shadow-xl transition-shadow ${
-      isHandUp
-        ? 'border-amber-400/60 shadow-amber-500/10 ring-2 ring-amber-400/30'
-        : focusInfo?.focus_state === 'focused'
-        ? 'border-emerald-500/30'
-        : 'border-white/10'
-    }`}>
+    <div
+      className={`group relative flex min-h-[160px] flex-col overflow-hidden rounded-2xl border shadow-xl transition-shadow ${isLocal ? 'cursor-pointer' : ''} ${
+        isHandUp
+          ? 'border-amber-400/60 shadow-amber-500/10 ring-2 ring-amber-400/30'
+          : focusInfo?.focus_state === 'focused'
+          ? 'border-emerald-500/30'
+          : 'border-white/10'
+      }`}
+      onClick={handleClick}
+    >
       {/* Video */}
       {stream && camOn ? (
         <video
@@ -746,6 +759,7 @@ function LiveRoomScreen({ navigate }) {
     sendReaction,
     sendHandRaise,
     sendFocusUpdate,
+    toggleCamera,
   } = useWebRTC();
 
   const [copied, setCopied] = useState(false);
@@ -873,6 +887,7 @@ function LiveRoomScreen({ navigate }) {
               isHandUp={handUp}
               micOn={micOn}
               camOn={camOn}
+              onToggleCamera={toggleCamera}
               onRequestCamera={requestCamera}
               cameraError={cameraError}
               t={t}
@@ -1040,7 +1055,11 @@ function LiveRoomScreen({ navigate }) {
           {/* Camera */}
           <button
             type="button"
-            onClick={() => setCamOn((c) => !c)}
+            onClick={() => {
+              const next = !camOn;
+              setCamOn(next);
+              toggleCamera(next);
+            }}
             disabled={!localStream}
             className={`flex size-12 items-center justify-center rounded-full border transition-colors ${
               camOn

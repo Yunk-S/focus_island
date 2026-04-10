@@ -171,24 +171,28 @@ class ModelManager:
             logger.warning("Models already loaded")
             return
 
-        # ── Real uniface import here ──────────────────────────────────────
-        from uniface.detection import RetinaFace, SCRFD  # noqa: F811
-        from uniface.recognition import ArcFace, MobileFace  # noqa: F811
-        from uniface.landmark import Landmark106  # noqa: F811
-        from uniface.headpose import HeadPose  # noqa: F811
-        # ─────────────────────────────────────────────────────────────────
-
         self._load_start_time = time.time()
         
         # Check if model files exist
         self._ensure_models_exist()
 
-        # ── Patch uniface ONNX session creation to low-memory settings before any model loads ──
-        # This must happen before RetinaFace/ArcFace/etc. are instantiated.
+        # ── CRITICAL: Patch uniface ONNX session creation BEFORE any uniface import ──
+        # This patch MUST happen before any 'from uniface.xxx import Yyy' statement,
+        # otherwise the import will bind the original function reference and our
+        # patch won't affect those already-imported modules.
         import uniface.onnx_utils as uniface_onnx
         _orig_uniface_create = uniface_onnx.create_onnx_session
         uniface_onnx.create_onnx_session = create_onnx_session_low_memory
+        logger.info("Applied low-memory ONNX session patch (enable_cpu_mem_arena=False)")
+
         try:
+            # ── Now safe to import uniface modules ──────────────────────────────
+            from uniface.detection import RetinaFace, SCRFD  # noqa: F811
+            from uniface.recognition import ArcFace, MobileFace  # noqa: F811
+            from uniface.landmark import Landmark106  # noqa: F811
+            from uniface.headpose import HeadPose  # noqa: F811
+            # ─────────────────────────────────────────────────────────────────────
+
             # 1. Load face detector
             logger.info("Loading face detector...")
             t0 = time.time()

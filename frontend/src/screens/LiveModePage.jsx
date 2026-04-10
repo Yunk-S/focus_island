@@ -68,16 +68,27 @@ function FocusBadge({ state, ear, className = '' }) {
 // ─── Video tile with focus overlay ────────────────────────────────────────────
 function VideoTile({ stream, clientId, userName, focusInfo, isLocal, isHost, isHandUp, micOn, camOn, onToggleCamera, onRequestCamera, cameraError, t }) {
   const videoRef = useRef(null);
+  
+  // Attach stream and handle video play state
   useEffect(() => {
-    if (videoRef.current) {
-      if (stream) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.play().catch(console.error);
-      } else {
-        videoRef.current.srcObject = null;
+    if (!videoRef.current) return;
+    
+    if (stream && camOn) {
+      videoRef.current.srcObject = stream;
+      // Try to play, handle autoplay restrictions
+      const video = videoRef.current;
+      if (video.paused) {
+        video.play().catch((e) => {
+          // Autoplay was prevented, that's okay
+          if (e.name !== 'AbortError') {
+            console.log('[VideoTile] play() error:', e.message);
+          }
+        });
       }
+    } else {
+      videoRef.current.srcObject = null;
     }
-  }, [stream]);
+  }, [stream, camOn]);
 
   const handleClick = () => {
     if (isLocal && !stream && onRequestCamera) {

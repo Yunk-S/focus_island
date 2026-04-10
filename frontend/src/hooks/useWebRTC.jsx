@@ -213,21 +213,9 @@ export function WebRTCProvider({ children }) {
 
   // ── Reaction auto-cleanup ─────────────────────────────────────────────────
   const reactionTimeoutsRef = useRef({});
-  const addReaction = useCallback((entry) => {
-    setReactions((prev) => {
-      const next = [...prev, entry];
-      return next.length > 30 ? next.slice(-30) : next;
-    });
-    // Remove after 4 s
-    const id = entry.ts;
-    if (reactionTimeoutsRef.current[id]) clearTimeout(reactionTimeoutsRef.current[id]);
-    reactionTimeoutsRef.current[id] = setTimeout(() => {
-      setReactions((prev) => prev.filter((r) => r.ts !== id));
-      delete reactionTimeoutsRef.current[id];
-    }, 4000);
-  }, []);
 
   // ── Signaling handler ──────────────────────────────────────────────────────
+  // Note: We use refs to avoid stale closure issues in WebSocket callbacks
   const handleSignalingMessage = useCallback(
     async (msg) => {
       const { type } = msg;
@@ -313,9 +301,10 @@ export function WebRTCProvider({ children }) {
         if (client_id === myClientIdRef.current) return;
 
         const pc = createPeerConnection(client_id);
+        const currentStream = localStreamRef.current;
 
-        if (localStream) {
-          localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
+        if (currentStream) {
+          currentStream.getTracks().forEach((track) => pc.addTrack(track, currentStream));
         }
 
         try {
@@ -349,10 +338,11 @@ export function WebRTCProvider({ children }) {
       if (type === 'offer') {
         const { from, sdp } = msg;
         const pc = createPeerConnection(from);
+        const currentStream = localStreamRef.current;
         try {
           await pc.setRemoteDescription(new RTCSessionDescription(sdp));
-          if (localStream) {
-            localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
+          if (currentStream) {
+            currentStream.getTracks().forEach((track) => pc.addTrack(track, currentStream));
           }
           const answer = await pc.createAnswer();
           await pc.setLocalDescription(answer);
@@ -389,8 +379,9 @@ export function WebRTCProvider({ children }) {
         return;
       }
 
-      // ── Room data ────────────────────────────────────────────��───────────
+      // ── Room data ───────────────────────────────────────────────────
       if (type === 'chat') {
+        console.log('[WebRTC] Received chat message:', msg);
         setChatMessages((prev) => {
           const next = [...prev, msg];
           return next.length > 200 ? next.slice(-200) : next;
@@ -404,7 +395,19 @@ export function WebRTCProvider({ children }) {
       }
 
       if (type === 'reaction') {
-        addReaction(msg);
+        console.log('[WebRTC] Received reaction:', msg);
+        // Use refs for reaction handling to avoid stale closure
+        setReactions((prev) => {
+          const next = [...prev, msg];
+          return next.length > 30 ? next.slice(-30) : next;
+        });
+        // Remove after 4s
+        const id = msg.ts;
+        if (reactionTimeoutsRef.current[id]) clearTimeout(reactionTimeoutsRef.current[id]);
+        reactionTimeoutsRef.current[id] = setTimeout(() => {
+          setReactions((prev) => prev.filter((r) => r.ts !== id));
+          delete reactionTimeoutsRef.current[id];
+        }, 4000);
         return;
       }
 
@@ -452,16 +455,10 @@ export function WebRTCProvider({ children }) {
         setRoomError(msg.message || 'Signaling error');
       }
     },
-    [
-      localStream,
-      createPeerConnection,
-      closePeerConnection,
-      detachStream,
-      sendWs,
-      addReaction,
-    ]
+    [createPeerConnection, closePeerConnection, detachStream, sendWs]
   );
 
+  // Keep handlerRef updated
   const handlerRef = useRef(handleSignalingMessage);
   handlerRef.current = handleSignalingMessage;
 

@@ -166,6 +166,21 @@ export function BackendProvider({ children }) {
         }
         break;
 
+      case 'session_ended':
+        setSessionState((prev) => ({
+          ...prev,
+          active: false,
+          current_state: 'idle',
+        }));
+        break;
+
+      case 'paused':
+      case 'resumed':
+        break;
+
+      case 'camera_status':
+        break;
+
       case 'frame_result':
         if (data) {
           setFrameData(data);

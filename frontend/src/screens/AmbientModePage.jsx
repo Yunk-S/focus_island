@@ -42,6 +42,12 @@ function AmbientModePage() {
     getApiBaseUrl,
   } = useBackend();
 
+  // Session fields from backend (must appear before any hook that references them — avoids TDZ crash)
+  const backendFocusMin = sessionState?.focus_time ?? 0;
+  const backendTotalPts = sessionState?.total_points ?? 0;
+  const currentState = sessionState?.current_state ?? 'idle';
+  const hasFace = sessionState?.has_face ?? false;
+
   // ─── Focus session state ─────────────────────────────────────────────────────
   const [focusState, setFocusState] = useState(FOCUS_STATES.IDLE);
   /** 累计计时秒数（本地计时器） */
@@ -53,42 +59,41 @@ function AmbientModePage() {
   const distractionTimerRef = useRef(null);
   const lastDistractionStartRef = useRef(null);
 
-  // Track distraction time when state is warning/interrupted
+  // Track distraction time when state is warning/interrupted (single interval, cleaned up on change)
   useEffect(() => {
-    if (focusState === FOCUS_STATES.FOCUSING) {
-      if (currentState === 'warning' || currentState === 'interrupted') {
-        // Start tracking distraction
-        if (!lastDistractionStartRef.current) {
-          lastDistractionStartRef.current = Date.now();
-        }
-        distractionTimerRef.current = setInterval(() => {
-          if (lastDistractionStartRef.current) {
-            const elapsed = Math.floor((Date.now() - lastDistractionStartRef.current) / 1000);
-            setDistractionSecs(elapsed);
-          }
-        }, 1000);
-      } else {
-        // Reset distraction tracking when focused
-        if (distractionTimerRef.current) {
-          clearInterval(distractionTimerRef.current);
-          distractionTimerRef.current = null;
-        }
-        lastDistractionStartRef.current = null;
-        setDistractionSecs(0);
-      }
-    } else {
-      // Clear when not focusing
+    const clearDistractionTimer = () => {
       if (distractionTimerRef.current) {
         clearInterval(distractionTimerRef.current);
         distractionTimerRef.current = null;
       }
+    };
+
+    if (focusState !== FOCUS_STATES.FOCUSING) {
+      clearDistractionTimer();
       lastDistractionStartRef.current = null;
       setDistractionSecs(0);
+      return undefined;
     }
+
+    if (currentState !== 'warning' && currentState !== 'interrupted') {
+      clearDistractionTimer();
+      lastDistractionStartRef.current = null;
+      setDistractionSecs(0);
+      return undefined;
+    }
+
+    // Same continuous stretch across warning ↔ interrupted; only reset when leaving distraction
+    if (!lastDistractionStartRef.current) {
+      lastDistractionStartRef.current = Date.now();
+    }
+    distractionTimerRef.current = setInterval(() => {
+      const start = lastDistractionStartRef.current;
+      if (!start) return;
+      setDistractionSecs(Math.floor((Date.now() - start) / 1000));
+    }, 1000);
+
     return () => {
-      if (distractionTimerRef.current) {
-        clearInterval(distractionTimerRef.current);
-      }
+      clearDistractionTimer();
     };
   }, [focusState, currentState]);
 
@@ -114,12 +119,6 @@ function AmbientModePage() {
 
   // ─── Permission modal ────────────────────────────────────────────────────────
   const [showPermissionModal, setShowPermissionModal] = useState(false);
-
-  // ─── Backend session data ────────────────────────────────────────────────────
-  const backendFocusMin = sessionState?.focus_time ?? 0; // 分钟（后端累计）
-  const backendTotalPts = sessionState?.total_points ?? 0;
-  const currentState = sessionState?.current_state ?? 'idle';
-  const hasFace = sessionState?.has_face ?? false;
 
   /**
    * 专注率 = 后端已记录的专注分钟数 / 总经过分钟数。

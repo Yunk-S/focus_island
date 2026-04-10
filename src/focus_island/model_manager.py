@@ -182,34 +182,45 @@ class ModelManager:
         
         # Check if model files exist
         self._ensure_models_exist()
-        
-        # 1. Load face detector
-        logger.info("Loading face detector...")
-        t0 = time.time()
-        if self.detector_type == "scrfd":
-            self.detector = SCRFD(providers=self.providers)
-        else:
-            self.detector = RetinaFace(providers=self.providers)
-        logger.info(f"Face detector loaded in {(time.time() - t0) * 1000:.1f}ms")
-        
-        # 2. Head pose (before ArcFace + landmarks to reduce peak RAM at ONNX init)
-        self._load_headpose_estimator(HeadPose)
-        
-        # 3. Load face recognition model (ArcFace)
-        logger.info("Loading face recognizer (ArcFace)...")
-        t0 = time.time()
-        if self.recognition_model == "mobileface":
-            self.recognizer = MobileFace(providers=self.providers)
-        else:
-            self.recognizer = ArcFace(providers=self.providers)
-        logger.info(f"Face recognizer loaded in {(time.time() - t0) * 1000:.1f}ms")
-        
-        # 4. Load 106-point landmark detector
-        logger.info("Loading 106-point landmark detector...")
-        t0 = time.time()
-        self.landmark_detector = Landmark106(providers=self.providers)
-        logger.info(f"Landmark detector loaded in {(time.time() - t0) * 1000:.1f}ms")
-        
+
+        # ── Patch uniface ONNX session creation to low-memory settings before any model loads ──
+        # This must happen before RetinaFace/ArcFace/etc. are instantiated.
+        import uniface.onnx_utils as uniface_onnx
+        _orig_uniface_create = uniface_onnx.create_onnx_session
+        uniface_onnx.create_onnx_session = create_onnx_session_low_memory
+        try:
+            # 1. Load face detector
+            logger.info("Loading face detector...")
+            t0 = time.time()
+            if self.detector_type == "scrfd":
+                self.detector = SCRFD(providers=self.providers)
+            else:
+                self.detector = RetinaFace(providers=self.providers)
+            logger.info(f"Face detector loaded in {(time.time() - t0) * 1000:.1f}ms")
+
+            # 2. Head pose (before ArcFace + landmarks to reduce peak RAM at ONNX init)
+            self._load_headpose_estimator(HeadPose)
+
+            # 3. Load face recognition model (ArcFace)
+            logger.info("Loading face recognizer (ArcFace)...")
+            t0 = time.time()
+            if self.recognition_model == "mobileface":
+                self.recognizer = MobileFace(providers=self.providers)
+            else:
+                self.recognizer = ArcFace(providers=self.providers)
+            logger.info(f"Face recognizer loaded in {(time.time() - t0) * 1000:.1f}ms")
+
+            # 4. Load 106-point landmark detector
+            logger.info("Loading 106-point landmark detector...")
+            t0 = time.time()
+            self.landmark_detector = Landmark106(providers=self.providers)
+            logger.info(f"Landmark detector loaded in {(time.time() - t0) * 1000:.1f}ms")
+        finally:
+            # Restore original create_onnx_session after all models are loaded
+            uniface_onnx.create_onnx_session = _orig_uniface_create
+            # Free any temporary allocation from the load sequence
+            gc.collect()
+
         self._models_loaded = True
         self._total_load_time_ms = (time.time() - self._load_start_time) * 1000
         logger.info(f"All models loaded in {self._total_load_time_ms:.1f}ms total")

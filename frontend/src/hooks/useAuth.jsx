@@ -7,9 +7,9 @@ const AuthContext = createContext(null);
 const DEMO_USERS = [
   {
     id: 'user_001',
-    name: 'Alex Chen',
-    email: 'alex@focusisland.com',
-    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Alex',
+    name: 'Yunkun',
+    email: 'yunkun@focusisland.com',
+    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Yunkun',
     totalPoints: 1250,
     streak: 7,
     level: 5

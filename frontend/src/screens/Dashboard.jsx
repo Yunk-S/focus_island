@@ -31,7 +31,7 @@ import {
 // Mock leaderboard data
 const mockLeaderboard = [
   { id: 1, name: 'Emma Wilson', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Emma', points: 1250, streak: 14, isOnline: true },
-  { id: 2, name: 'Alex Chen', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Alex', points: 980, streak: 7, isOnline: true },
+  { id: 2, name: 'Yunkun', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Yunkun', points: 980, streak: 7, isOnline: true },
   { id: 3, name: 'Sarah Kim', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Sarah', points: 890, streak: 5, isOnline: false },
   { id: 4, name: 'James Lee', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=James', points: 720, streak: 3, isOnline: true },
   { id: 5, name: 'Lisa Wang', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Lisa', points: 650, streak: 4, isOnline: false }

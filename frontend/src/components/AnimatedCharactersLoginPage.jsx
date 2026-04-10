@@ -32,7 +32,7 @@ function LoginPage() {
 
   const handleDemoLogin = async () => {
     try {
-      await login('alex@focusisland.com', 'demo');
+      await login('yunkun@focusisland.com', 'demo');
       navigate('/face-setup');
     } catch {
       /* error surfaced via useAuth */

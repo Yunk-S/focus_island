@@ -724,7 +724,9 @@ class FocusWorkFlow:
         # Reset frame counter
         self.frame_controller.reset()
         self.anti_spoofing.reset()
-        
+        # Reset preview rate limiter so next preview frame is processed immediately
+        self._last_preview_emit_ts = 0.0
+
         logger.info("=" * 60)
         logger.info(f"FOCUS STARTED: user={user_id}, session={self.session_manager.session_id}")
         logger.info("=" * 60)
@@ -1030,7 +1032,12 @@ class FocusWorkFlow:
         self.frame_controller.reset()
         self.face_selector.reset()
         self.anti_spoofing.reset()
-        
+        # Free accumulated frame results to reclaim memory
+        if self.session_manager:
+            self.session_manager.session_data.clear_frame_results()
+        # Reset preview rate limiter
+        self._last_preview_emit_ts = 0.0
+
         logger.info(f"Session ended: {summary}")
         
         return summary

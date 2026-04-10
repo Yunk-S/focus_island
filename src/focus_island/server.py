@@ -191,13 +191,18 @@ class ServerMode:
         logger.info("Capture thread stopped")
     
     def get_latest_frame(self) -> np.ndarray:
-        """Get latest frame"""
+        """Get latest frame reference (shared, DO NOT modify). For broadcast & WS handlers."""
+        with self.frame_lock:
+            return self.latest_frame  # share reference, no copy
+
+    def get_frame_copy(self) -> Optional[np.ndarray]:
+        """Get a copy of the latest frame. Use only when you need to modify or retain it."""
         with self.frame_lock:
             return self.latest_frame.copy() if self.latest_frame is not None else None
-    
+
     def get_mjpeg_bytes(self) -> bytes:
         """Get frame in MJPEG format"""
-        frame = self.get_latest_frame()
+        frame = self.get_frame_copy()  # copy needed for imencode which modifies buffer
         if frame is None:
             return b''
         
@@ -285,7 +290,7 @@ class ServerMode:
             async def video_stream():
                 async def generate():
                     while not self.shutdown_requested:
-                        frame = self.get_latest_frame()
+                        frame = self.get_frame_copy()  # copy for imencode (modifies buffer)
                         if frame is not None:
                             ret, jpeg = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
                             if ret:
@@ -309,7 +314,7 @@ class ServerMode:
                 language: str = "zh"
             ):
                 if self.workflow:
-                    frame = self.get_latest_frame()
+                    frame = self.get_frame_copy()  # copy: workflow may process this image
                     if frame is not None:
                         result = self.workflow.verify_face(
                             image=frame,
@@ -349,8 +354,8 @@ class ServerMode:
                             "error": "该账号已绑定过人脸，无法重复绑定",
                             "error_code": "ALREADY_BOUND"
                         }
-                    
-                    frame = self.get_latest_frame()
+
+                    frame = self.get_frame_copy()
                     if frame is not None:
                         result = self.workflow.bind_face(
                             image=frame,
@@ -389,7 +394,7 @@ class ServerMode:
                 language: str = "zh"
             ):
                 if self.workflow:
-                    frame = self.get_latest_frame()
+                    frame = self.get_frame_copy()  # copy for workflow.start_focus
                     if frame is not None:
                         result = self.workflow.start_focus(
                             image=frame,
@@ -523,13 +528,12 @@ class ServerMode:
                             else:
                                 data = {}
                             msg_type = data.get("type", "")
-                            
+
                             if msg_type == "verify_face":
                                 user_id = data.get("data", {}).get("user_id", "default_user")
                                 language = data.get("data", {}).get("language", "zh")
-                                frame = self.get_latest_frame()
+                                frame = self.get_frame_copy()  # copy for workflow verification
                                 if frame and self.workflow:
-                                    # 检查是否已绑定
                                     is_bound = self.workflow.authenticator.has_bound_face(user_id)
                                     if not is_bound:
                                         result = {
@@ -550,13 +554,12 @@ class ServerMode:
                                         "type": "face_verified",
                                         "data": result
                                     }))
-                            
+
                             elif msg_type == "bind_face":
                                 user_id = data.get("data", {}).get("user_id", "default_user")
                                 language = data.get("data", {}).get("language", "zh")
-                                frame = self.get_latest_frame()
+                                frame = self.get_frame_copy()  # copy for workflow bind
                                 if frame and self.workflow:
-                                    # 先检查是否已绑定
                                     is_already_bound = self.workflow.authenticator.has_bound_face(user_id)
                                     if is_already_bound:
                                         result = {
@@ -575,7 +578,7 @@ class ServerMode:
                                         "type": "face_bound",
                                         "data": result
                                     }))
-                            
+
                             elif msg_type == "check_face_status":
                                 user_id = data.get("data", {}).get("user_id", "default_user")
                                 if self.workflow:
@@ -587,12 +590,12 @@ class ServerMode:
                                             "user_id": user_id
                                         }
                                     }))
-                            
+
                             elif msg_type == "start_session":
                                 user_id = data.get("data", {}).get("user_id", "default_user")
                                 seat_id = data.get("data", {}).get("seat_id", "desktop_client")
                                 language = data.get("data", {}).get("language", "zh")
-                                frame = self.get_latest_frame()
+                                frame = self.get_frame_copy()  # copy for workflow.start_focus
                                 if frame and self.workflow:
                                     result = self.workflow.start_focus(
                                         image=frame,

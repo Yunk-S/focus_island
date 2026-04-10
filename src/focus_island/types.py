@@ -172,10 +172,26 @@ class SessionData:
     start_time: datetime = field(default_factory=datetime.now)
     end_time: Optional[datetime] = None
     is_active: bool = True
-    
+
     stats: SessionStats = field(default_factory=SessionStats)
-    frame_results: list[FrameResult] = field(default_factory=list)
-    
+    # Ring buffer: keep only the last MAX_FRAME_RESULTS entries to avoid memory growth
+    _frame_results: list = field(default_factory=list)
+    _MAX_FRAME_RESULTS: int = field(default=100, repr=False)
+
+    @property
+    def frame_results(self) -> list:
+        return self._frame_results
+
+    def add_frame_result(self, result: FrameResult) -> None:
+        """Add a frame result with automatic culling of old entries."""
+        self._frame_results.append(result)
+        if len(self._frame_results) > self._MAX_FRAME_RESULTS:
+            self._frame_results[:] = self._frame_results[-self._MAX_FRAME_RESULTS:]
+
+    def clear_frame_results(self) -> None:
+        """Free all frame results and release memory."""
+        self._frame_results.clear()
+
     def to_dict(self) -> dict:
         return {
             "session_id": self.session_id,
@@ -184,7 +200,7 @@ class SessionData:
             "end_time": self.end_time.isoformat() if self.end_time else None,
             "is_active": self.is_active,
             "stats": self.stats.to_dict(),
-            "frame_count": len(self.frame_results)
+            "frame_count": len(self._frame_results)
         }
 
     def to_json(self) -> str:

@@ -74,12 +74,20 @@ export function WebRTCProvider({ children }) {
   const peersRef = useRef({});
 
   const sendWs = useCallback((msg) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      console.log('[WebRTC] sendWs:', JSON.stringify(msg));
-      wsRef.current.send(JSON.stringify(msg));
-    } else {
-      console.warn('[WebRTC] sendWs failed: WebSocket not open, readyState:', wsRef.current?.readyState);
+    // If we received a message, the socket is at least receiving, so try to send
+    // Don't rely on readyState alone because of race condition:
+    // onmessage may fire before onopen in some browsers/servers
+    const ws = wsRef.current;
+    if (ws) {
+      console.log('[WebRTC] sendWs:', JSON.stringify(msg), 'readyState:', ws.readyState);
+      try {
+        ws.send(JSON.stringify(msg));
+        return;
+      } catch (e) {
+        console.error('[WebRTC] sendWs error:', e);
+      }
     }
+    console.warn('[WebRTC] sendWs failed: WebSocket not available');
   }, []);
 
   const requestCamera = useCallback(async () => {
@@ -191,19 +199,35 @@ export function WebRTCProvider({ children }) {
 
         const pending = pendingIntentRef.current;
         pendingIntentRef.current = null;
-        if (pending?.kind === 'create') {
-          console.log('[WebRTC] Sending create_room for:', pending.userName);
-          sendWs({ type: 'create_room', user_name: pending.userName });
-        } else if (pending?.kind === 'join') {
-          console.log('[WebRTC] Sending join_room for:', pending.roomId, pending.userName);
-          sendWs({
+        
+        // Directly use ws.send in onmessage handler to avoid race condition
+        // where onmessage fires before onopen
+        const ws = wsRef.current;
+        
+        if (pending?.kind === 'create' && ws) {
+          const msgToSend = { type: 'create_room', user_name: pending.userName };
+          console.log('[WebRTC] Sending create_room directly:', msgToSend);
+          try {
+            ws.send(JSON.stringify(msgToSend));
+          } catch (e) {
+            console.error('[WebRTC] Failed to send create_room:', e);
+          }
+        } else if (pending?.kind === 'join' && ws) {
+          const msgToSend = {
             type: 'join_room',
             room_id: pending.roomId,
             user_name: pending.userName,
-          });
+          };
+          console.log('[WebRTC] Sending join_room directly:', msgToSend);
+          try {
+            ws.send(JSON.stringify(msgToSend));
+          } catch (e) {
+            console.error('[WebRTC] Failed to send join_room:', e);
+          }
         } else {
-          console.log('[WebRTC] No pending intent, waiting...');
+          console.log('[WebRTC] No pending intent or ws not available');
         }
+        
         if (connectTimeoutRef.current) {
           clearTimeout(connectTimeoutRef.current);
           connectTimeoutRef.current = null;
@@ -212,6 +236,7 @@ export function WebRTCProvider({ children }) {
       }
 
       if (type === 'room_created' || type === 'room_joined') {
+        console.log('[WebRTC] Received room response:', type, msg);
         setMyRoomId(msg.room_id);
         setSignalingState('in_room');
         setRoomError(null);

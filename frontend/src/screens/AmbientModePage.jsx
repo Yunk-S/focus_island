@@ -48,6 +48,59 @@ function AmbientModePage() {
   const [elapsedSecs, setElapsedSecs] = useState(0);
   const elapsedTimerRef = useRef(null);
 
+  // ─── Distraction tracking ──────────────────────────────────────────────────
+  const [distractionSecs, setDistractionSecs] = useState(0);
+  const distractionTimerRef = useRef(null);
+  const lastDistractionStartRef = useRef(null);
+
+  // Track distraction time when state is warning/interrupted
+  useEffect(() => {
+    if (focusState === FOCUS_STATES.FOCUSING) {
+      if (currentState === 'warning' || currentState === 'interrupted') {
+        // Start tracking distraction
+        if (!lastDistractionStartRef.current) {
+          lastDistractionStartRef.current = Date.now();
+        }
+        distractionTimerRef.current = setInterval(() => {
+          if (lastDistractionStartRef.current) {
+            const elapsed = Math.floor((Date.now() - lastDistractionStartRef.current) / 1000);
+            setDistractionSecs(elapsed);
+          }
+        }, 1000);
+      } else {
+        // Reset distraction tracking when focused
+        if (distractionTimerRef.current) {
+          clearInterval(distractionTimerRef.current);
+          distractionTimerRef.current = null;
+        }
+        lastDistractionStartRef.current = null;
+        setDistractionSecs(0);
+      }
+    } else {
+      // Clear when not focusing
+      if (distractionTimerRef.current) {
+        clearInterval(distractionTimerRef.current);
+        distractionTimerRef.current = null;
+      }
+      lastDistractionStartRef.current = null;
+      setDistractionSecs(0);
+    }
+    return () => {
+      if (distractionTimerRef.current) {
+        clearInterval(distractionTimerRef.current);
+      }
+    };
+  }, [focusState, currentState]);
+
+  // Determine glow level based on distraction time
+  const getGlowLevel = () => {
+    if (distractionSecs >= 30) return 'critical'; // Red glow
+    if (distractionSecs >= 5) return 'warning';    // Yellow glow
+    return 'normal';                               // No glow
+  };
+
+  const glowLevel = getGlowLevel();
+
   // ─── Aggregated stats ────────────────────────────────────────────────────────
   const [todayFocusTime, setTodayFocusTime] = useState(0); // minutes (backend)
   const [totalPoints, setTotalPoints] = useState(user?.totalPoints || 0);
@@ -207,6 +260,48 @@ function AmbientModePage() {
 
       {/* Ambient background */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        {/* Distraction glow that radiates from center */}
+        <AnimatePresence>
+          {glowLevel === 'warning' && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 1 }}
+              className="absolute rounded-full"
+              style={{
+                width: '80vmax',
+                height: '80vmax',
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                background: 'radial-gradient(circle, rgba(234,179,8,0.15) 0%, rgba(234,179,8,0.05) 30%, transparent 60%)',
+                filter: 'blur(60px)',
+              }}
+            />
+          )}
+          {glowLevel === 'critical' && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 1 }}
+              className="absolute rounded-full"
+              style={{
+                width: '100vmax',
+                height: '100vmax',
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                background: 'radial-gradient(circle, rgba(239,68,68,0.2) 0%, rgba(239,68,68,0.08) 25%, transparent 55%)',
+                filter: 'blur(80px)',
+                animation: 'critical-pulse 2s ease-in-out infinite',
+              }}
+            />
+          )}
+        </AnimatePresence>
+
+        {/* Base ambient backgrounds */}
         <div
           className="absolute rounded-full blur-3xl animate-pulse"
           style={{
@@ -320,18 +415,74 @@ function AmbientModePage() {
 
           {/* Focus rate ring */}
           <div className="relative flex items-center justify-center">
+            {/* Glow effect behind the ring */}
+            <AnimatePresence>
+              {glowLevel === 'warning' && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.8 }}
+                  transition={{ duration: 0.5 }}
+                  className="absolute rounded-full"
+                  style={{
+                    width: 320,
+                    height: 320,
+                    background: 'radial-gradient(circle, rgba(234,179,8,0.4) 0%, rgba(234,179,8,0.2) 40%, transparent 70%)',
+                    filter: 'blur(30px)',
+                    animation: 'pulse-glow 2s ease-in-out infinite',
+                  }}
+                />
+              )}
+              {glowLevel === 'critical' && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.8 }}
+                  transition={{ duration: 0.5 }}
+                  className="absolute rounded-full"
+                  style={{
+                    width: 350,
+                    height: 350,
+                    background: 'radial-gradient(circle, rgba(239,68,68,0.5) 0%, rgba(239,68,68,0.25) 40%, transparent 70%)',
+                    filter: 'blur(40px)',
+                    animation: 'pulse-glow 1s ease-in-out infinite',
+                  }}
+                />
+              )}
+            </AnimatePresence>
+
+            {/* Distraction timer overlay */}
+            {(glowLevel === 'warning' || glowLevel === 'critical') && (
+              <div className="absolute -top-16 rounded-full bg-black/60 px-4 py-1.5 text-sm font-medium backdrop-blur-sm"
+                style={{
+                  color: glowLevel === 'critical' ? '#FCA5A5' : '#FDE68A',
+                }}
+              >
+                <span className="animate-pulse">{distractionSecs}s</span>
+              </div>
+            )}
+
             <div className="relative size-48">
               <svg className="absolute inset-0 size-full -rotate-90" viewBox="0 0 192 192">
                 <circle cx="96" cy="96" r="88" fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="5" />
                 <circle
                   cx="96" cy="96" r="88"
                   fill="none"
-                  stroke="url(#ambientGradient)"
-                  strokeWidth="5"
+                  stroke={
+                    glowLevel === 'critical' ? '#EF4444' :
+                    glowLevel === 'warning' ? '#F59E0B' :
+                    'url(#ambientGradient)'
+                  }
+                  strokeWidth="6"
                   strokeLinecap="round"
                   strokeDasharray={2 * Math.PI * 88}
                   strokeDashoffset={2 * Math.PI * 88 * (1 - focusRatePct / 100)}
-                  style={{ transition: 'stroke-dashoffset 1.5s ease' }}
+                  style={{
+                    transition: 'stroke-dashoffset 1.5s ease, stroke 0.5s ease',
+                    filter: glowLevel === 'critical' ? 'drop-shadow(0 0 8px rgba(239,68,68,0.8))' :
+                           glowLevel === 'warning' ? 'drop-shadow(0 0 8px rgba(245,158,11,0.8))' :
+                           'none',
+                  }}
                 />
                 <defs>
                   <linearGradient id="ambientGradient" x1="0%" y1="0%" x2="100%" y2="0%">

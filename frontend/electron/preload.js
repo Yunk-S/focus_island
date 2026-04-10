@@ -24,6 +24,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('backend-exit', (_, data) => callback(data));
   },
   
+  // Room server log listeners (for debugging)
+  onRoomLog: (callback) => {
+    ipcRenderer.on('room-log', (_, data) => callback(data));
+  },
+  onRoomError: (callback) => {
+    ipcRenderer.on('room-error', (_, data) => callback(data));
+  },
+  onRoomExit: (callback) => {
+    ipcRenderer.on('room-exit', (_, data) => callback(data));
+  },
+  
   // Remove listeners
   removeAllListeners: (channel) => {
     ipcRenderer.removeAllListeners(channel);

@@ -156,9 +156,15 @@ function startRoomServerIfNeeded(backendDir) {
         });
         roomProcess.on('error', (err) => {
           console.error('[Room] Failed to start room server:', err);
+          if (mainWindow) {
+            mainWindow.webContents.send('room-error', { message: err.message });
+          }
         });
         roomProcess.on('exit', (code) => {
           console.log('[Room] room_server exited with code:', code);
+          if (mainWindow) {
+            mainWindow.webContents.send('room-exit', { code });
+          }
           roomProcess = null;
         });
 

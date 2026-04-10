@@ -393,9 +393,11 @@ export function WebRTCProvider({ children }) {
 
     void (async () => {
       let url = getSignalUrl();
+      console.log('[WebRTC] Connecting to signaling server...');
       try {
         if (typeof window !== 'undefined' && window.electronAPI?.getRoomSignaling) {
           const r = await window.electronAPI.getRoomSignaling();
+          console.log('[WebRTC] getRoomSignaling response:', r);
           if (r?.url && typeof r.url === 'string') {
             url = r.url;
           }
@@ -403,20 +405,56 @@ export function WebRTCProvider({ children }) {
       } catch (e) {
         console.warn('[WebRTC] getRoomSignaling IPC failed, using build-time URL', e);
       }
+      
+      console.log('[WebRTC] Final URL:', url);
 
       if (wsRef.current?.readyState === WebSocket.OPEN) {
+        console.log('[WebRTC] Already connected');
         return;
       }
 
       const ws = new WebSocket(url);
       wsRef.current = ws;
+      
+      console.log('[WebRTC] WebSocket created, state:', ws.readyState);
+      
+      ws.onopen = () => {
+        console.log('[WebRTC] WebSocket opened successfully');
+        reconnectAttemptsRef.current = 0; // Reset on successful connection
+      };
 
+      ws.onmessage = (event) => {
+        console.log('[WebRTC] Message received:', event.data);
+        try {
+          handlerRef.current(JSON.parse(event.data));
+        } catch (err) {
+          console.error('[WebRTC] Failed to parse signaling message:', err);
+        }
+      };
+
+      ws.onerror = (error) => {
+        console.error('[WebRTC] WebSocket error:', error);
+        // Let the timeout handle retry logic
+      };
+
+      ws.onclose = (event) => {
+        console.log('[WebRTC] WebSocket closed, code:', event.code, 'reason:', event.reason);
+        if (connectTimeoutRef.current) {
+          clearTimeout(connectTimeoutRef.current);
+          connectTimeoutRef.current = null;
+        }
+        console.log('[WebRTC] Signaling disconnected');
+        setSignalingState((s) => (s === 'in_room' ? s : 'disconnected'));
+      };
+
+      // Connection timeout handler with retry logic
       connectTimeoutRef.current = setTimeout(() => {
         if (wsRef.current === ws && ws.readyState !== WebSocket.OPEN) {
+          console.log('[WebRTC] Connection timeout, readyState:', ws.readyState);
           // Attempt to retry connection if we haven't exceeded max attempts
           if (reconnectAttemptsRef.current < MAX_RECONNECT_ATTEMPTS) {
             reconnectAttemptsRef.current += 1;
-            console.log(`[WebRTC] Connection attempt ${reconnectAttemptsRef.current} failed, retrying in ${RECONNECT_DELAY_MS}ms...`);
+            console.log(`[WebRTC] Connection attempt ${reconnectAttemptsRef.current}/${MAX_RECONNECT_ATTEMPTS} failed, retrying in ${RECONNECT_DELAY_MS}ms...`);
             ws.close();
             setTimeout(() => {
               reconnectAttemptsRef.current = 0; // Reset for next attempt
@@ -432,33 +470,6 @@ export function WebRTCProvider({ children }) {
           }
         }
       }, 12000);
-
-      ws.onopen = () => {
-        console.log('[WebRTC] Signaling connected', url);
-        reconnectAttemptsRef.current = 0; // Reset on successful connection
-      };
-
-      ws.onmessage = (event) => {
-        try {
-          handlerRef.current(JSON.parse(event.data));
-        } catch (err) {
-          console.error('[WebRTC] Failed to parse signaling message:', err);
-        }
-      };
-
-      ws.onerror = () => {
-        console.error('[WebRTC] Signaling WebSocket error');
-        // Let the timeout handle retry logic
-      };
-
-      ws.onclose = () => {
-        if (connectTimeoutRef.current) {
-          clearTimeout(connectTimeoutRef.current);
-          connectTimeoutRef.current = null;
-        }
-        console.log('[WebRTC] Signaling disconnected');
-        setSignalingState((s) => (s === 'in_room' ? s : 'disconnected'));
-      };
     })();
   }, []);
 
@@ -558,6 +569,33 @@ export function WebRTCProvider({ children }) {
   const getFocusData = useCallback(() => {
     sendWs({ type: 'get_focus_data' });
   }, [sendWs]);
+
+  // ── Listen for room server logs from Electron main process ─────────────────
+  useEffect(() => {
+    if (window.electronAPI) {
+      // Listen for room server logs
+      const handleRoomLog = (data) => {
+        console.log('[Room Server]', data.data || data.message || data);
+      };
+      const handleRoomError = (data) => {
+        console.error('[Room Server Error]', data.message || data);
+        setRoomError((prev) => prev || `Room server error: ${data.message}`);
+      };
+      const handleRoomExit = (data) => {
+        console.warn('[Room Server Exit]', data);
+      };
+      
+      window.electronAPI.onRoomLog(handleRoomLog);
+      window.electronAPI.onRoomError(handleRoomError);
+      window.electronAPI.onRoomExit(handleRoomExit);
+      
+      return () => {
+        window.electronAPI.removeAllListeners('room-log');
+        window.electronAPI.removeAllListeners('room-error');
+        window.electronAPI.removeAllListeners('room-exit');
+      };
+    }
+  }, []);
 
   // ── When local stream becomes available ─────────────────────────────────
   useEffect(() => {

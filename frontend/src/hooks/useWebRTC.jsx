@@ -89,12 +89,15 @@ export function WebRTCProvider({ children }) {
     console.warn('[WebRTC] sendWs failed: WebSocket not available, readyState:', ws?.readyState, 'isSocketReady:', isSocketReadyRef.current);
   }, []);
 
+  const localStreamRef = useRef(null);
+  
   const requestCamera = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 15 } },
         audio: true,
       });
+      localStreamRef.current = stream;
       setLocalStream(stream);
       setCameraError(null);
       return stream;
@@ -105,40 +108,49 @@ export function WebRTCProvider({ children }) {
   }, []);
 
   const releaseCamera = useCallback(() => {
-    setLocalStream((prev) => {
-      if (prev) prev.getTracks().forEach((t) => t.stop());
-      return null;
-    });
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach((t) => t.stop());
+      localStreamRef.current = null;
+    }
+    setLocalStream(null);
   }, []);
 
   // Toggle camera: enable=true turns on, enable=false turns off
-  // For now just toggles the tracks enabled state
   const toggleCamera = useCallback(async (enable) => {
-    console.log('[WebRTC] toggleCamera:', enable, 'localStream:', !!localStream);
+    const currentStream = localStreamRef.current;
+    console.log('[WebRTC] toggleCamera:', enable, 'currentStream:', !!currentStream);
+    
     if (enable) {
       // Turn camera ON
-      if (!localStream) {
+      if (!currentStream) {
         // Need to get camera permission
         const stream = await requestCamera();
         console.log('[WebRTC] toggleCamera: got new stream', !!stream);
         return stream;
       }
       // Re-enable existing video track
-      const videoTrack = localStream.getVideoTracks()[0];
+      const videoTrack = currentStream.getVideoTracks()[0];
       if (videoTrack) {
         videoTrack.enabled = true;
+        console.log('[WebRTC] toggleCamera: enabled existing video track');
       }
     } else {
       // Turn camera OFF - disable video tracks (don't stop them)
-      if (localStream) {
-        const videoTrack = localStream.getVideoTracks()[0];
+      if (currentStream) {
+        const videoTrack = currentStream.getVideoTracks()[0];
         if (videoTrack) {
           videoTrack.enabled = false;
+          console.log('[WebRTC] toggleCamera: disabled video track');
         }
       }
     }
-    return localStream;
-  }, [localStream, requestCamera]);
+    return currentStream;
+  }, [requestCamera]);
+
+  // Keep localStreamRef in sync with localStream state
+  useEffect(() => {
+    localStreamRef.current = localStream;
+  }, [localStream]);
 
   const attachStream = useCallback((clientId, stream) => {
     setRemoteStreams((prev) => ({ ...prev, [clientId]: stream }));
@@ -232,7 +244,7 @@ export function WebRTCProvider({ children }) {
           connectTimeoutRef.current = null;
         }
         
-        // Send pending intent since socket is now ready
+        // Try to send pending intent (may already be sent via onopen)
         const pending = pendingIntentRef.current;
         console.log('[WebRTC] system_info: pendingIntent =', pending);
         
@@ -253,12 +265,26 @@ export function WebRTCProvider({ children }) {
       if (type === 'connected') {
         myClientIdRef.current = msg.client_id;
         setMyClientId(msg.client_id);
-        console.log('[WebRTC] Received connected, pendingIntent will be sent on onopen');
-
+        console.log('[WebRTC] Received connected');
+        
         // Clear the connection timeout since we got a response
         if (connectTimeoutRef.current) {
           clearTimeout(connectTimeoutRef.current);
           connectTimeoutRef.current = null;
+        }
+        
+        // Try to send pending intent (may already be sent via onopen)
+        const pending = pendingIntentRef.current;
+        const ws = wsRef.current;
+        if (pending && ws && ws.readyState === WebSocket.OPEN) {
+          if (pending.kind === 'create') {
+            ws.send(JSON.stringify({ type: 'create_room', user_name: pending.userName }));
+            console.log('[WebRTC] connected: sent create_room');
+          } else if (pending.kind === 'join') {
+            ws.send(JSON.stringify({ type: 'join_room', room_id: pending.roomId, user_name: pending.userName }));
+            console.log('[WebRTC] connected: sent join_room');
+          }
+          pendingIntentRef.current = null;
         }
         return;
       }
@@ -481,34 +507,50 @@ export function WebRTCProvider({ children }) {
       
       console.log('[WebRTC] WebSocket created, state:', ws.readyState);
       
+      // Flag to track if pending intent was already sent (via onopen or message handler)
+      let pendingIntentSent = false;
+      
+      const sendPendingIntent = () => {
+        // Prevent duplicate sends
+        if (pendingIntentSent) {
+          console.log('[WebRTC] sendPendingIntent: already sent, skipping');
+          return;
+        }
+        
+        const pending = pendingIntentRef.current;
+        if (!pending) {
+          console.log('[WebRTC] sendPendingIntent: no pending intent');
+          return;
+        }
+        
+        if (ws.readyState !== WebSocket.OPEN) {
+          console.log('[WebRTC] sendPendingIntent: socket not open yet, readyState:', ws.readyState);
+          return;
+        }
+        
+        pendingIntentSent = true;
+        console.log('[WebRTC] sendPendingIntent:', pending);
+        
+        try {
+          if (pending.kind === 'create') {
+            ws.send(JSON.stringify({ type: 'create_room', user_name: pending.userName }));
+            console.log('[WebRTC] sendPendingIntent: create_room sent');
+          } else if (pending.kind === 'join') {
+            ws.send(JSON.stringify({ type: 'join_room', room_id: pending.roomId, user_name: pending.userName }));
+            console.log('[WebRTC] sendPendingIntent: join_room sent');
+          }
+          pendingIntentRef.current = null;
+        } catch (e) {
+          console.error('[WebRTC] sendPendingIntent error:', e);
+          pendingIntentSent = false;  // Reset on error to allow retry
+        }
+      };
+      
       ws.onopen = () => {
-        console.log('[WebRTC] WebSocket opened successfully');
+        console.log('[WebRTC] WebSocket opened successfully, readyState:', ws.readyState);
         isSocketReadyRef.current = true;  // Mark socket as ready to send
         reconnectAttemptsRef.current = 0; // Reset on successful connection
-        
-        // If there's a pending intent, send it now that socket is ready
-        const pending = pendingIntentRef.current;
-        console.log('[WebRTC] onopen: pendingIntent =', pending, 'readyState =', ws.readyState);
-        
-        if (pending?.kind === 'create') {
-          console.log('[WebRTC] onopen: attempting to send create_room');
-          try {
-            ws.send(JSON.stringify({ type: 'create_room', user_name: pending.userName }));
-            console.log('[WebRTC] onopen: create_room sent successfully');
-          } catch (e) {
-            console.error('[WebRTC] onopen: failed to send create_room:', e);
-          }
-          pendingIntentRef.current = null;
-        } else if (pending?.kind === 'join') {
-          console.log('[WebRTC] onopen: attempting to send join_room');
-          try {
-            ws.send(JSON.stringify({ type: 'join_room', room_id: pending.roomId, user_name: pending.userName }));
-            console.log('[WebRTC] onopen: join_room sent successfully');
-          } catch (e) {
-            console.error('[WebRTC] onopen: failed to send join_room:', e);
-          }
-          pendingIntentRef.current = null;
-        }
+        sendPendingIntent();
       };
 
       ws.onmessage = (event) => {

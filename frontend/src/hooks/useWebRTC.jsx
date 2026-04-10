@@ -589,6 +589,7 @@ export function WebRTCProvider({ children }) {
   const sendChatMessage = useCallback(
     (text) => {
       if (!text?.trim()) return;
+      console.log('[WebRTC] sendChatMessage:', text.trim());
       sendWs({ type: 'chat', text: text.trim() });
     },
     [sendWs]
@@ -596,13 +597,15 @@ export function WebRTCProvider({ children }) {
 
   const sendReaction = useCallback(
     (reaction) => {
+      console.log('[WebRTC] sendReaction:', reaction, 'signalingState:', signalingState);
       sendWs({ type: 'reaction', reaction });
     },
-    [sendWs]
+    [sendWs, signalingState]
   );
 
   const sendHandRaise = useCallback(
     (raised) => {
+      console.log('[WebRTC] sendHandRaise:', raised);
       sendWs({ type: 'hand_raise', raised });
     },
     [sendWs]
@@ -610,6 +613,7 @@ export function WebRTCProvider({ children }) {
 
   const sendFocusUpdate = useCallback(
     (focus_state, ear, focus_time, points) => {
+      console.log('[WebRTC] sendFocusUpdate:', { focus_state, ear, focus_time, points });
       sendWs({
         type: 'focus_update',
         focus_state: String(focus_state || 'idle'),

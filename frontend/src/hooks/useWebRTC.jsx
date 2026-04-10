@@ -50,6 +50,7 @@ const RECONNECT_DELAY_MS = 3000;
 
 export function WebRTCProvider({ children }) {
   const wsRef = useRef(null);
+  const isSocketReadyRef = useRef(false);  // Track if socket is truly ready to send
   const myClientIdRef = useRef(null);
   const pendingIntentRef = useRef(null);
   const connectTimeoutRef = useRef(null);
@@ -74,12 +75,10 @@ export function WebRTCProvider({ children }) {
   const peersRef = useRef({});
 
   const sendWs = useCallback((msg) => {
-    // If we received a message, the socket is at least receiving, so try to send
-    // Don't rely on readyState alone because of race condition:
-    // onmessage may fire before onopen in some browsers/servers
     const ws = wsRef.current;
-    if (ws) {
-      console.log('[WebRTC] sendWs:', JSON.stringify(msg), 'readyState:', ws.readyState);
+    // Use isSocketReadyRef or check readyState to ensure socket is ready
+    if (ws && (isSocketReadyRef.current || ws.readyState === WebSocket.OPEN)) {
+      console.log('[WebRTC] sendWs:', JSON.stringify(msg));
       try {
         ws.send(JSON.stringify(msg));
         return;
@@ -87,7 +86,7 @@ export function WebRTCProvider({ children }) {
         console.error('[WebRTC] sendWs error:', e);
       }
     }
-    console.warn('[WebRTC] sendWs failed: WebSocket not available');
+    console.warn('[WebRTC] sendWs failed: WebSocket not available, readyState:', ws?.readyState);
   }, []);
 
   const requestCamera = useCallback(async () => {
@@ -195,39 +194,9 @@ export function WebRTCProvider({ children }) {
       if (type === 'connected') {
         myClientIdRef.current = msg.client_id;
         setMyClientId(msg.client_id);
-        console.log('[WebRTC] Received connected, checking pendingIntent:', pendingIntentRef.current);
+        console.log('[WebRTC] Received connected, pendingIntent will be sent on onopen');
 
-        const pending = pendingIntentRef.current;
-        pendingIntentRef.current = null;
-        
-        // Directly use ws.send in onmessage handler to avoid race condition
-        // where onmessage fires before onopen
-        const ws = wsRef.current;
-        
-        if (pending?.kind === 'create' && ws) {
-          const msgToSend = { type: 'create_room', user_name: pending.userName };
-          console.log('[WebRTC] Sending create_room directly:', msgToSend);
-          try {
-            ws.send(JSON.stringify(msgToSend));
-          } catch (e) {
-            console.error('[WebRTC] Failed to send create_room:', e);
-          }
-        } else if (pending?.kind === 'join' && ws) {
-          const msgToSend = {
-            type: 'join_room',
-            room_id: pending.roomId,
-            user_name: pending.userName,
-          };
-          console.log('[WebRTC] Sending join_room directly:', msgToSend);
-          try {
-            ws.send(JSON.stringify(msgToSend));
-          } catch (e) {
-            console.error('[WebRTC] Failed to send join_room:', e);
-          }
-        } else {
-          console.log('[WebRTC] No pending intent or ws not available');
-        }
-        
+        // Clear the connection timeout since we got a response
         if (connectTimeoutRef.current) {
           clearTimeout(connectTimeoutRef.current);
           connectTimeoutRef.current = null;
@@ -416,6 +385,8 @@ export function WebRTCProvider({ children }) {
       return;
     }
 
+    isSocketReadyRef.current = false;  // Reset ready flag on new connection
+    
     if (wsRef.current) {
       try { wsRef.current.close(); } catch { /* ignore */ }
       wsRef.current = null;
@@ -453,7 +424,26 @@ export function WebRTCProvider({ children }) {
       
       ws.onopen = () => {
         console.log('[WebRTC] WebSocket opened successfully');
+        isSocketReadyRef.current = true;  // Mark socket as ready to send
         reconnectAttemptsRef.current = 0; // Reset on successful connection
+        
+        // If there's a pending intent, send it now that socket is ready
+        const pending = pendingIntentRef.current;
+        if (pending?.kind === 'create') {
+          console.log('[WebRTC] onopen: sending pending create_room');
+          const ws = wsRef.current;
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'create_room', user_name: pending.userName }));
+          }
+          pendingIntentRef.current = null;
+        } else if (pending?.kind === 'join') {
+          console.log('[WebRTC] onopen: sending pending join_room');
+          const ws = wsRef.current;
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'join_room', room_id: pending.roomId, user_name: pending.userName }));
+          }
+          pendingIntentRef.current = null;
+        }
       };
 
       ws.onmessage = (event) => {
@@ -472,6 +462,7 @@ export function WebRTCProvider({ children }) {
 
       ws.onclose = (event) => {
         console.log('[WebRTC] WebSocket closed, code:', event.code, 'reason:', event.reason);
+        isSocketReadyRef.current = false;  // Reset ready flag
         if (connectTimeoutRef.current) {
           clearTimeout(connectTimeoutRef.current);
           connectTimeoutRef.current = null;

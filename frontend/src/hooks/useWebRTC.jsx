@@ -75,7 +75,10 @@ export function WebRTCProvider({ children }) {
 
   const sendWs = useCallback((msg) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
+      console.log('[WebRTC] sendWs:', JSON.stringify(msg));
       wsRef.current.send(JSON.stringify(msg));
+    } else {
+      console.warn('[WebRTC] sendWs failed: WebSocket not open, readyState:', wsRef.current?.readyState);
     }
   }, []);
 
@@ -184,17 +187,22 @@ export function WebRTCProvider({ children }) {
       if (type === 'connected') {
         myClientIdRef.current = msg.client_id;
         setMyClientId(msg.client_id);
+        console.log('[WebRTC] Received connected, checking pendingIntent:', pendingIntentRef.current);
 
         const pending = pendingIntentRef.current;
         pendingIntentRef.current = null;
         if (pending?.kind === 'create') {
+          console.log('[WebRTC] Sending create_room for:', pending.userName);
           sendWs({ type: 'create_room', user_name: pending.userName });
         } else if (pending?.kind === 'join') {
+          console.log('[WebRTC] Sending join_room for:', pending.roomId, pending.userName);
           sendWs({
             type: 'join_room',
             room_id: pending.roomId,
             user_name: pending.userName,
           });
+        } else {
+          console.log('[WebRTC] No pending intent, waiting...');
         }
         if (connectTimeoutRef.current) {
           clearTimeout(connectTimeoutRef.current);

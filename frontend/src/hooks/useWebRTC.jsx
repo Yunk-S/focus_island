@@ -220,6 +220,36 @@ export function WebRTCProvider({ children }) {
     async (msg) => {
       const { type } = msg;
 
+      // Handle system_info from room server (convert to connected format)
+      if (type === 'system_info' && msg.data?.client_id) {
+        console.log('[WebRTC] Received system_info (room server), treating as connected');
+        myClientIdRef.current = msg.data.client_id;
+        setMyClientId(msg.data.client_id);
+        
+        // Clear the connection timeout since we got a response
+        if (connectTimeoutRef.current) {
+          clearTimeout(connectTimeoutRef.current);
+          connectTimeoutRef.current = null;
+        }
+        
+        // Send pending intent since socket is now ready
+        const pending = pendingIntentRef.current;
+        console.log('[WebRTC] system_info: pendingIntent =', pending);
+        
+        const ws = wsRef.current;
+        if (pending && ws && ws.readyState === WebSocket.OPEN) {
+          if (pending.kind === 'create') {
+            ws.send(JSON.stringify({ type: 'create_room', user_name: pending.userName }));
+            console.log('[WebRTC] system_info: sent create_room');
+          } else if (pending.kind === 'join') {
+            ws.send(JSON.stringify({ type: 'join_room', room_id: pending.roomId, user_name: pending.userName }));
+            console.log('[WebRTC] system_info: sent join_room');
+          }
+          pendingIntentRef.current = null;
+        }
+        return;
+      }
+
       if (type === 'connected') {
         myClientIdRef.current = msg.client_id;
         setMyClientId(msg.client_id);

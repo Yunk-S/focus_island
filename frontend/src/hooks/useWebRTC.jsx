@@ -504,50 +504,12 @@ export function WebRTCProvider({ children }) {
       
       console.log('[WebRTC] WebSocket created, state:', ws.readyState);
       
-      // Flag to track if pending intent was already sent (via onopen or message handler)
-      let pendingIntentSent = false;
-      
-      const sendPendingIntent = () => {
-        // Prevent duplicate sends
-        if (pendingIntentSent) {
-          console.log('[WebRTC] sendPendingIntent: already sent, skipping');
-          return;
-        }
-        
-        const pending = pendingIntentRef.current;
-        if (!pending) {
-          console.log('[WebRTC] sendPendingIntent: no pending intent');
-          return;
-        }
-        
-        if (ws.readyState !== WebSocket.OPEN) {
-          console.log('[WebRTC] sendPendingIntent: socket not open yet, readyState:', ws.readyState);
-          return;
-        }
-        
-        pendingIntentSent = true;
-        console.log('[WebRTC] sendPendingIntent:', pending);
-        
-        try {
-          if (pending.kind === 'create') {
-            ws.send(JSON.stringify({ type: 'create_room', user_name: pending.userName }));
-            console.log('[WebRTC] sendPendingIntent: create_room sent');
-          } else if (pending.kind === 'join') {
-            ws.send(JSON.stringify({ type: 'join_room', room_id: pending.roomId, user_name: pending.userName }));
-            console.log('[WebRTC] sendPendingIntent: join_room sent');
-          }
-          pendingIntentRef.current = null;
-        } catch (e) {
-          console.error('[WebRTC] sendPendingIntent error:', e);
-          pendingIntentSent = false;  // Reset on error to allow retry
-        }
-      };
-      
       ws.onopen = () => {
         console.log('[WebRTC] WebSocket opened successfully, readyState:', ws.readyState);
         isSocketReadyRef.current = true;  // Mark socket as ready to send
         reconnectAttemptsRef.current = 0; // Reset on successful connection
-        sendPendingIntent();
+        // Note: Do NOT send pending intent here - wait for the server's "connected" or "system_info" message
+        // This avoids the race condition where we send before the server is ready
       };
 
       ws.onmessage = (event) => {

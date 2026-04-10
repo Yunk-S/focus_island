@@ -456,44 +456,39 @@ function LiveModeSelectScreen({ navigate }) {
 }
 
 // ─── Camera Permission Modal ───────────────────────────────────────────────────
-function CameraPermissionModal({ onGrant, onSkip, cameraError, t }) {
+function CameraPermissionModal({ onGrant, onSkip, t }) {
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="absolute inset-0 z-20 flex items-center justify-center bg-black/60 backdrop-blur-sm"
-    >
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
       <motion.div
-        initial={{ scale: 0.9, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0.9, opacity: 0 }}
-        className="w-full max-w-sm rounded-2xl border border-border/40 bg-card/95 p-6 text-center shadow-2xl backdrop-blur-xl"
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="relative w-full max-w-sm mx-4 rounded-2xl border border-white/20 bg-white/10 p-8 shadow-2xl backdrop-blur-xl"
       >
-        <div className="mx-auto mb-5 flex size-14 items-center justify-center rounded-2xl bg-primary/10">
-          <Video className="size-7 text-primary" />
+        <div className="flex size-14 mx-auto mb-5 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/80 to-pink-500/80">
+          <Video className="size-7 text-white" />
         </div>
-        <h2 className="mb-2 text-xl font-bold text-foreground">{t('login.cameraTitle')}</h2>
-        <p className="mb-5 text-sm text-muted-foreground">{t('login.cameraBody')}</p>
-        {cameraError && (
-          <div className="mb-4 rounded-lg bg-red-500/10 p-3 text-sm text-red-400">{cameraError}</div>
-        )}
+        <h2 className="mb-3 text-center text-xl font-semibold text-white">
+          {t('login.cameraTitle')}
+        </h2>
+        <p className="mb-7 text-center text-sm leading-relaxed text-white/70">
+          {t('login.cameraBody')}
+        </p>
         <div className="flex flex-col gap-3">
           <button
             onClick={onGrant}
-            className="w-full rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-all hover:bg-primary/90"
+            className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-primary to-pink-500 py-3 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/25 transition-opacity hover:opacity-90"
           >
             {t('login.allowCamera')}
           </button>
           <button
             onClick={onSkip}
-            className="w-full rounded-xl bg-muted/60 py-3 text-sm font-medium text-muted-foreground transition-all hover:bg-muted hover:text-foreground"
+            className="w-full rounded-xl border border-white/20 py-3 text-center text-sm text-white/60 transition-colors hover:border-white/40 hover:text-white/80"
           >
             {t('login.skipCamera')}
           </button>
         </div>
       </motion.div>
-    </motion.div>
+    </div>
   );
 }
 
@@ -501,7 +496,7 @@ function CameraPermissionModal({ onGrant, onSkip, cameraError, t }) {
 function HostScreen({ navigate, onBack }) {
   const { user } = useAuth();
   const { t } = useI18n();
-  const { createRoom, myRoomId, signalingState, roomError, requestCamera, localStream, cameraError } = useWebRTC();
+  const { createRoom, myRoomId, signalingState, roomError, requestCamera, localStream } = useWebRTC();
   const [roomId, setRoomId] = useState(null);
   const [copied, setCopied] = useState(false);
   const [showPermission, setShowPermission] = useState(false);
@@ -520,12 +515,25 @@ function HostScreen({ navigate, onBack }) {
     if (localStream && videoRef.current) {
       videoRef.current.srcObject = localStream;
       setCameraReady(true);
+    } else {
+      setCameraReady(false);
     }
   }, [localStream]);
 
-  const handleGrantCamera = async () => {
-    const stream = await requestCamera();
-    if (stream) setShowPermission(false);
+  // 用户点击"开启摄像头" -> 显示弹窗
+  const handleOpenCam = () => {
+    setShowPermission(true);
+  };
+
+  // 用户在弹窗中同意 -> 开启摄像头
+  const handleGrantCamera = () => {
+    requestCamera();
+    setShowPermission(false);
+  };
+
+  // 用户在弹窗中跳过 -> 关闭弹窗
+  const handleSkipCamera = () => {
+    setShowPermission(false);
   };
 
   const copyInviteCode = () => {
@@ -580,16 +588,13 @@ function HostScreen({ navigate, onBack }) {
               className="relative flex w-full max-w-lg flex-col items-center gap-8"
             >
               {/* Camera Permission Modal Overlay */}
-              <AnimatePresence>
-                {showPermission && (
-                  <CameraPermissionModal
-                    onGrant={handleGrantCamera}
-                    onSkip={() => setShowPermission(false)}
-                    cameraError={cameraError}
-                    t={t}
-                  />
-                )}
-              </AnimatePresence>
+              {showPermission && (
+                <CameraPermissionModal
+                  onGrant={handleGrantCamera}
+                  onSkip={handleSkipCamera}
+                  t={t}
+                />
+              )}
 
               <div className="w-full rounded-2xl border border-border/40 bg-card/80 p-8 text-center shadow-xl backdrop-blur-xl">
                 <div className="mb-2 text-sm font-medium text-muted-foreground">{t('live.inviteLabel')}</div>
@@ -616,7 +621,7 @@ function HostScreen({ navigate, onBack }) {
               <div className="flex gap-4">
                 {!cameraReady && (
                   <button
-                    onClick={() => setShowPermission(true)}
+                    onClick={handleOpenCam}
                     className="flex items-center gap-2 rounded-xl bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground transition-all hover:bg-primary/90"
                   >
                     <Video className="size-4" />

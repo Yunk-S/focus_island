@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useBackend } from '../hooks/useBackend';
 import { useI18n } from '../i18n/I18nContext';
+import { buildDicebearAvatarUrl } from '../lib/avatarUrl';
 import {
   Palmtree as IslandIcon,
   LogOut,
@@ -30,12 +31,36 @@ import {
 
 // Mock leaderboard data
 const mockLeaderboard = [
-  { id: 1, name: 'Emma Wilson', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Emma', points: 1250, streak: 14, isOnline: true },
-  { id: 2, name: 'Yunkun', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Yunkun', points: 980, streak: 7, isOnline: true },
-  { id: 3, name: 'Sarah Kim', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Sarah', points: 890, streak: 5, isOnline: false },
-  { id: 4, name: 'James Lee', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=James', points: 720, streak: 3, isOnline: true },
-  { id: 5, name: 'Lisa Wang', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Lisa', points: 650, streak: 4, isOnline: false }
+  { id: 1, name: 'Emma Wilson', avatar: buildDicebearAvatarUrl('Emma'), points: 1250, streak: 14, isOnline: true },
+  { id: 2, name: 'Yunkun', avatar: buildDicebearAvatarUrl('Yunkun'), points: 980, streak: 7, isOnline: true },
+  { id: 3, name: 'Sarah Kim', avatar: buildDicebearAvatarUrl('Sarah'), points: 890, streak: 5, isOnline: false },
+  { id: 4, name: 'James Lee', avatar: buildDicebearAvatarUrl('James'), points: 720, streak: 3, isOnline: true },
+  { id: 5, name: 'Lisa Wang', avatar: buildDicebearAvatarUrl('Lisa'), points: 650, streak: 4, isOnline: false }
 ];
+
+function AvatarImage({ src, name, className }) {
+  const [failed, setFailed] = useState(false);
+  const initials = (name || '?').trim().slice(0, 2).toUpperCase() || '?';
+  const safe = src && typeof src === 'string' && src.trim() !== '';
+  if (!safe || failed) {
+    return (
+      <div
+        className={`${className} flex shrink-0 items-center justify-center bg-gradient-to-br from-accent-mint/35 to-accent-lavender/35 text-[10px] font-semibold tracking-tight text-foreground`}
+        aria-hidden
+      >
+        {initials}
+      </div>
+    );
+  }
+  return (
+    <img
+      src={src}
+      alt=""
+      className={className}
+      onError={() => setFailed(true)}
+    />
+  );
+}
 
 function Dashboard() {
   const navigate = useNavigate();
@@ -320,10 +345,10 @@ function Dashboard() {
           
           {/* User Avatar */}
           <div className="flex items-center gap-3">
-            <img
+            <AvatarImage
               src={user?.avatar}
-              alt={user?.name}
-              className="w-10 h-10 rounded-full border-2 border-accent-mint/50"
+              name={user?.name}
+              className="h-10 w-10 rounded-full border-2 border-accent-mint/50 object-cover"
             />
             <div className="hidden md:block">
               <p className="font-medium text-sm">{user?.name}</p>
@@ -650,10 +675,10 @@ function Dashboard() {
                   </div>
                   
                   {/* Avatar */}
-                  <img
+                  <AvatarImage
                     src={player.avatar}
-                    alt={player.name}
-                    className="w-8 h-8 rounded-full"
+                    name={player.name}
+                    className="h-8 w-8 rounded-full object-cover"
                   />
                   
                   {/* Name & Streak */}

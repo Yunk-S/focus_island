@@ -1,7 +1,20 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import { buildDicebearAvatarUrl, emailLocalPart } from '../lib/avatarUrl';
 
 // Auth context
 const AuthContext = createContext(null);
+
+function avatarSeedForUser(u) {
+  if (!u || typeof u !== 'object') return 'user';
+  const fromName = u.name && String(u.name).trim();
+  return fromName || emailLocalPart(u.email);
+}
+
+/** Ensures avatar URL matches profile and is safe for query strings (fixes broken img after edits). */
+function ensureUserAvatar(u) {
+  if (!u || typeof u !== 'object') return u;
+  return { ...u, avatar: buildDicebearAvatarUrl(avatarSeedForUser(u)) };
+}
 
 // Demo user data
 const DEMO_USERS = [
@@ -9,7 +22,7 @@ const DEMO_USERS = [
     id: 'user_001',
     name: 'Yunkun',
     email: 'yunkun@focusisland.com',
-    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Yunkun',
+    avatar: buildDicebearAvatarUrl('Yunkun'),
     totalPoints: 1250,
     streak: 7,
     level: 5
@@ -18,7 +31,7 @@ const DEMO_USERS = [
     id: 'user_002',
     name: 'Emma Wilson',
     email: 'emma@focusisland.com',
-    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Emma',
+    avatar: buildDicebearAvatarUrl('Emma Wilson'),
     totalPoints: 890,
     streak: 3,
     level: 3
@@ -35,7 +48,10 @@ export function AuthProvider({ children }) {
     const savedUser = localStorage.getItem('focus_island_user');
     if (savedUser) {
       try {
-        setUser(JSON.parse(savedUser));
+        const parsed = JSON.parse(savedUser);
+        const normalized = ensureUserAvatar(parsed);
+        setUser(normalized);
+        localStorage.setItem('focus_island_user', JSON.stringify(normalized));
       } catch (err) {
         localStorage.removeItem('focus_island_user');
       }
@@ -56,11 +72,12 @@ export function AuthProvider({ children }) {
       
       if (!foundUser && email) {
         // Create new user
+        const local = emailLocalPart(email);
         foundUser = {
           id: `user_${Date.now()}`,
-          name: email.split('@')[0],
+          name: local,
           email,
-          avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${email.split('@')[0]}`,
+          avatar: buildDicebearAvatarUrl(local),
           totalPoints: 0,
           streak: 0,
           level: 1
@@ -68,9 +85,10 @@ export function AuthProvider({ children }) {
       }
 
       if (foundUser) {
-        setUser(foundUser);
-        localStorage.setItem('focus_island_user', JSON.stringify(foundUser));
-        return foundUser;
+        const withAvatar = ensureUserAvatar(foundUser);
+        setUser(withAvatar);
+        localStorage.setItem('focus_island_user', JSON.stringify(withAvatar));
+        return withAvatar;
       } else {
         throw new Error('Invalid credentials');
       }
@@ -91,10 +109,10 @@ export function AuthProvider({ children }) {
   // Update user points
   const updatePoints = useCallback((points) => {
     if (user) {
-      const updatedUser = {
+      const updatedUser = ensureUserAvatar({
         ...user,
         totalPoints: user.totalPoints + points
-      };
+      });
       setUser(updatedUser);
       localStorage.setItem('focus_island_user', JSON.stringify(updatedUser));
     }
@@ -103,10 +121,10 @@ export function AuthProvider({ children }) {
   // Update streak
   const updateStreak = useCallback((streak) => {
     if (user) {
-      const updatedUser = {
+      const updatedUser = ensureUserAvatar({
         ...user,
         streak
-      };
+      });
       setUser(updatedUser);
       localStorage.setItem('focus_island_user', JSON.stringify(updatedUser));
     }
@@ -115,7 +133,10 @@ export function AuthProvider({ children }) {
   /** Merge partial fields into current user and persist (demo / local only) */
   const updateUser = useCallback((patch) => {
     if (user && patch && typeof patch === 'object') {
-      const updatedUser = { ...user, ...patch };
+      const cleanPatch = Object.fromEntries(
+        Object.entries(patch).filter(([, v]) => v !== undefined)
+      );
+      const updatedUser = ensureUserAvatar({ ...user, ...cleanPatch });
       setUser(updatedUser);
       localStorage.setItem('focus_island_user', JSON.stringify(updatedUser));
       return updatedUser;

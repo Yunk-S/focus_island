@@ -197,11 +197,11 @@ export default {
     durations: '{{n}} 分钟',
   },
   ambient: {
-    readyToFocus: 'Ready to focus',
-    sessionEnded: 'Session ended',
-    focusRate: 'Focus rate',
-    focused: 'Focused',
-    totalElapsed: 'Total time',
+    readyToFocus: '准备专注',
+    sessionEnded: '会话已结束',
+    focusRate: '专注率',
+    focused: '专注中',
+    totalElapsed: '总时长',
   },
   live: {
     badgeLive: '直播',

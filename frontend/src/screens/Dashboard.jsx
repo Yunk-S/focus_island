@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useBackend } from '../hooks/useBackend';
@@ -96,10 +96,54 @@ function Dashboard() {
   currentStateRef.current = sessionState.current_state;
   /** 上一场结束后的专注率，空闲时右下角仍可读 */
   const [lastSessionFocusRate, setLastSessionFocusRate] = useState(null);
+  /** 结束会话后保留的本场快照（避免 stopSession 清空后端状态后三项统计归零） */
+  const [lastSessionStats, setLastSessionStats] = useState(null);
+  /** 本场开始时的后端累计积分，用于计算本场获得积分 */
+  const [sessionPointsBaseline, setSessionPointsBaseline] = useState(0);
+  const [distractionSecs, setDistractionSecs] = useState(0);
+  const distractionTimerRef = useRef(null);
+  const lastDistractionStartRef = useRef(null);
   const [totalPoints, setTotalPoints] = useState(user?.totalPoints || 0);
-  
   /** Backend MJPEG preview (same device as OpenCV — avoids Windows dual-open black screen). */
   const [cameraPreviewUrl, setCameraPreviewUrl] = useState(null);
+
+  const currentState = sessionState?.current_state ?? 'idle';
+
+  // 分心时长：与氛围模式一致，>5s 黄光源、>30s 红光源（仅专注且未暂停时）
+  useEffect(() => {
+    const clearDistractionTimer = () => {
+      if (distractionTimerRef.current) {
+        clearInterval(distractionTimerRef.current);
+        distractionTimerRef.current = null;
+      }
+    };
+    if (!isFocusing || isPaused) {
+      clearDistractionTimer();
+      lastDistractionStartRef.current = null;
+      setDistractionSecs(0);
+      return undefined;
+    }
+    if (currentState !== 'warning' && currentState !== 'interrupted') {
+      clearDistractionTimer();
+      lastDistractionStartRef.current = null;
+      setDistractionSecs(0);
+      return undefined;
+    }
+    if (!lastDistractionStartRef.current) {
+      lastDistractionStartRef.current = Date.now();
+    }
+    distractionTimerRef.current = setInterval(() => {
+      const start = lastDistractionStartRef.current;
+      if (!start) return;
+      setDistractionSecs(Math.floor((Date.now() - start) / 1000));
+    }, 1000);
+    return () => {
+      clearDistractionTimer();
+    };
+  }, [isFocusing, isPaused, currentState]);
+
+  const glowLevel =
+    distractionSecs >= 30 ? 'critical' : distractionSecs >= 5 ? 'warning' : 'normal';
   
   useEffect(() => {
     if (isFocusing && !isPaused) {
@@ -201,6 +245,8 @@ function Dashboard() {
     setPreviewElapsedSecs(0);
     setPreviewFocusedSecs(0);
     setLastSessionFocusRate(null);
+    setLastSessionStats(null);
+    setSessionPointsBaseline(sessionState?.total_points ?? 0);
     setIsFocusing(true);
     setIsPaused(false);
     startSession(user?.id);
@@ -221,7 +267,14 @@ function Dashboard() {
     const effectiveMin = Math.max(backendMin, clientFocusedSecs / 60);
     const rate =
       elapsedMin > 0 ? Math.min(100, Math.round((effectiveMin / elapsedMin) * 1000) / 10) : 0;
+    const endPoints = sessionState?.total_points ?? 0;
+    const pointsEarned = Math.max(0, endPoints - sessionPointsBaseline);
     setLastSessionFocusRate(rate);
+    setLastSessionStats({
+      focusedMin: effectiveMin,
+      pointsEarned,
+      ratePct: rate,
+    });
     setClientFocusedSecs(0);
     setIsFocusing(false);
     setIsPaused(false);
@@ -257,6 +310,21 @@ function Dashboard() {
       : previewFocusRate != null
         ? previewFocusRate
         : null;
+
+  /** 本场已获得积分（进行中）；结束后用 lastSessionStats */
+  const pointsEarnedLive = Math.max(
+    0,
+    (sessionState?.total_points ?? 0) - sessionPointsBaseline
+  );
+  const focusedMinShown = isFocusing
+    ? effectiveFocusMinLive
+    : lastSessionStats?.focusedMin ?? 0;
+  const pointsEarnedShown = isFocusing
+    ? pointsEarnedLive
+    : lastSessionStats?.pointsEarned ?? 0;
+  const focusRateCenterPct = isFocusing
+    ? focusRateLive
+    : lastSessionStats?.ratePct ?? lastSessionFocusRate ?? null;
   
   const getStateColor = (state) => {
     switch (state) {
@@ -267,8 +335,19 @@ function Dashboard() {
     }
   };
   
-  /** 圆环进度 = 当前专注率（实时） */
-  const ringProgress = isFocusing ? focusRateLive : 0;
+  /** 圆环进度 = 专注率；结束后保留上一场 */
+  const ringProgress = isFocusing
+    ? focusRateLive
+    : lastSessionStats != null
+      ? lastSessionStats.ratePct
+      : lastSessionFocusRate ?? 0;
+
+  const progressStroke =
+    glowLevel === 'critical'
+      ? '#EF4444'
+      : glowLevel === 'warning'
+        ? '#F59E0B'
+        : 'url(#progressGradient)';
 
   const sessionStateLabel = useCallback(
     (state) => {
@@ -505,17 +584,85 @@ function Dashboard() {
             <p className="text-text-secondary">{t('dashboard.stayFocused')}</p>
           </div>
           
-          {/* Timer Circle */}
-          <div className="relative mb-8">
+          {/* Timer Circle — 计时盘即光源：分心时黄/红模糊光晕照向背景 */}
+          <div className="relative mb-8 flex items-center justify-center">
+            <AnimatePresence>
+              {glowLevel === 'warning' && (
+                <motion.div
+                  key="warn-glow"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="pointer-events-none absolute rounded-full"
+                  style={{
+                    width: 420,
+                    height: 420,
+                    background:
+                      'radial-gradient(circle, rgba(234,179,8,0.45) 0%, rgba(234,179,8,0.15) 45%, transparent 72%)',
+                    filter: 'blur(28px)',
+                  }}
+                />
+              )}
+              {glowLevel === 'critical' && (
+                <motion.div
+                  key="crit-glow"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="pointer-events-none absolute rounded-full"
+                  style={{
+                    width: 480,
+                    height: 480,
+                    background:
+                      'radial-gradient(circle, rgba(239,68,68,0.5) 0%, rgba(239,68,68,0.2) 40%, transparent 70%)',
+                    filter: 'blur(36px)',
+                  }}
+                />
+              )}
+            </AnimatePresence>
+            {/* 大面积背景染色（光照射在背景上） */}
+            <AnimatePresence>
+              {glowLevel === 'warning' && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="pointer-events-none fixed left-1/2 top-1/2 z-0 -translate-x-1/2 -translate-y-1/2 rounded-full"
+                  style={{
+                    width: '120vmin',
+                    height: '120vmin',
+                    background:
+                      'radial-gradient(circle, rgba(234,179,8,0.12) 0%, rgba(234,179,8,0.04) 35%, transparent 65%)',
+                    filter: 'blur(64px)',
+                  }}
+                />
+              )}
+              {glowLevel === 'critical' && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="pointer-events-none fixed left-1/2 top-1/2 z-0 -translate-x-1/2 -translate-y-1/2 rounded-full"
+                  style={{
+                    width: '140vmin',
+                    height: '140vmin',
+                    background:
+                      'radial-gradient(circle, rgba(239,68,68,0.16) 0%, rgba(239,68,68,0.06) 30%, transparent 58%)',
+                    filter: 'blur(72px)',
+                  }}
+                />
+              )}
+            </AnimatePresence>
+
             {/* Progress Ring */}
-            <svg className="w-72 h-72 progress-ring">
+            <svg className="relative z-10 h-72 w-72 progress-ring" style={{ filter: glowLevel !== 'normal' ? 'drop-shadow(0 0 14px rgba(255,200,80,0.35))' : undefined }}>
               {/* Background circle */}
               <circle
                 cx="144"
                 cy="144"
                 r="130"
                 fill="none"
-                stroke="rgba(255,255,255,0.05)"
+                stroke="rgba(255,255,255,0.06)"
                 strokeWidth="8"
               />
               {/* Progress circle */}
@@ -524,14 +671,20 @@ function Dashboard() {
                 cy="144"
                 r="130"
                 fill="none"
-                stroke="url(#progressGradient)"
+                stroke={progressStroke}
                 strokeWidth="8"
                 strokeLinecap="round"
                 strokeDasharray={`${2 * Math.PI * 130}`}
                 animate={{ strokeDashoffset: `${2 * Math.PI * 130 * (1 - ringProgress / 100)}` }}
                 transition={{ duration: 0.5 }}
+                style={
+                  glowLevel === 'critical'
+                    ? { filter: 'drop-shadow(0 0 10px rgba(239,68,68,0.75))' }
+                    : glowLevel === 'warning'
+                      ? { filter: 'drop-shadow(0 0 10px rgba(245,158,11,0.75))' }
+                      : undefined
+                }
               />
-              {/* Glow effect */}
               <defs>
                 <linearGradient id="progressGradient" x1="0%" y1="0%" x2="100%" y2="0%">
                   <stop offset="0%" stopColor="#7FDBDA" />
@@ -541,7 +694,7 @@ function Dashboard() {
             </svg>
             
             {/* Timer Display */}
-            <div className="absolute inset-0 flex flex-col items-center justify-center">
+            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center">
               <motion.div
                 animate={isFocusing && !isPaused ? { scale: [1, 1.02, 1] } : {}}
                 transition={{ duration: 2, repeat: Infinity }}
@@ -560,23 +713,27 @@ function Dashboard() {
             </div>
           </div>
           
-          {/* Focus Stats — focus_time 已为分钟 */}
-          <div className="flex items-center gap-8 mb-8">
+          {/* Focus Stats — 进行中实时；结束后显示本场快照 */}
+          <div className="relative z-10 flex items-center gap-8 mb-8">
             <div className="text-center">
-              <p className="text-2xl font-bold text-accent-mint">{Math.floor(backendFocusMin)}</p>
+              <p className="text-2xl font-bold text-accent-mint">
+                {isFocusing || lastSessionStats != null ? focusedMinShown.toFixed(1) : '—'}
+              </p>
               <p className="text-xs text-text-muted">{t('dashboard.sessionFocusMinutes')}</p>
             </div>
             <div className="w-px h-10 bg-white/10" />
             <div className="text-center">
-              <p className="text-2xl font-bold text-accent-lavender">{sessionState.total_points ?? 0}</p>
+              <p className="text-2xl font-bold text-accent-lavender">
+                {isFocusing || lastSessionStats != null ? Math.round(pointsEarnedShown) : '—'}
+              </p>
               <p className="text-xs text-text-muted">{t('dashboard.pointsEarned')}</p>
             </div>
             <div className="w-px h-10 bg-white/10" />
             <div className="text-center">
               <p className="text-2xl font-bold text-accent-gold">
-                {isFocusing ? `${focusRateLive.toFixed(1)}%` : '—'}
+                {focusRateCenterPct != null ? `${focusRateCenterPct.toFixed(1)}%` : '—'}
               </p>
-              <p className="text-xs text-text-muted">{t('ambient.focusRate')}</p>
+              <p className="text-xs text-text-muted">{t('dashboard.focusRate')}</p>
             </div>
           </div>
 

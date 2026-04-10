@@ -193,6 +193,18 @@ async def room_ws(websocket: WebSocket):
     meta: dict[str, Any] = {"client_id": client_id, "joined_at": time.time()}
     user_meta[websocket] = meta
 
+    # Helper to safely send JSON, catching connection closed errors
+    async def safe_send(msg: dict) -> bool:
+        try:
+            await websocket.send_json(msg)
+            return True
+        except WebSocketDisconnect:
+            logger.info(f"[Room] Client {client_id} disconnected during send")
+            raise  # Re-raise so the outer handler can clean up
+        except Exception as e:
+            logger.warning(f"[Room] Failed to send to {client_id}: {e}")
+            return False
+
     try:
         # Send client their own ID
         await websocket.send_json({"type": "connected", "client_id": client_id})
@@ -202,7 +214,7 @@ async def room_ws(websocket: WebSocket):
                 msg: dict = json.loads(raw)
             except json.JSONDecodeError:
                 logger.warning(f"[Room] Received invalid JSON from {client_id}: {raw}")
-                await websocket.send_json({"type": "error", "message": "Invalid JSON"})
+                await safe_send({"type": "error", "message": "Invalid JSON"})
                 continue
 
             logger.info(f"[Room] Message from {client_id}: type={msg.get('type')}, msg={msg}")
@@ -220,7 +232,7 @@ async def room_ws(websocket: WebSocket):
                 meta["user_name"] = user_name
                 meta["is_host"] = True
                 logger.info(f"[Room] {client_id} created room {new_room}")
-                await websocket.send_json({
+                await safe_send({
                     "type": "room_created",
                     "room_id": new_room,
                     "participants": [
@@ -235,11 +247,11 @@ async def room_ws(websocket: WebSocket):
                 target_room = msg.get("room_id", "").strip().upper()
                 user_name = msg.get("user_name", "Guest")
                 if not target_room:
-                    await websocket.send_json({"type": "error", "message": "room_id is required"})
+                    await safe_send({"type": "error", "message": "room_id is required"})
                     continue
 
                 if target_room not in rooms:
-                    await websocket.send_json({"type": "room_not_found", "room_id": target_room})
+                    await safe_send({"type": "room_not_found", "room_id": target_room})
                     continue
 
                 # Leave previous room if any (re-register websocket in user_meta after _disconnect)
@@ -261,7 +273,7 @@ async def room_ws(websocket: WebSocket):
                 logger.info(f"[Room] {client_id} ('{user_name}') joined {target_room} ({len(participants)} participants)")
 
                 # Confirm to joiner
-                await websocket.send_json({
+                await safe_send({
                     "type": "room_joined",
                     "room_id": target_room,
                     "participants": participants,
@@ -289,7 +301,7 @@ async def room_ws(websocket: WebSocket):
             elif msg_type in ("offer", "answer", "ice_candidate"):
                 target = msg.get("target", "")
                 if not target:
-                    await websocket.send_json({"type": "error", "message": "target is required"})
+                    await safe_send({"type": "error", "message": "target is required"})
                     continue
                 # Forward to the specific client
                 if room_id and room_id in rooms:

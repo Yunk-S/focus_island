@@ -429,18 +429,24 @@ export function WebRTCProvider({ children }) {
         
         // If there's a pending intent, send it now that socket is ready
         const pending = pendingIntentRef.current;
+        console.log('[WebRTC] onopen: pendingIntent =', pending, 'readyState =', ws.readyState);
+        
         if (pending?.kind === 'create') {
-          console.log('[WebRTC] onopen: sending pending create_room');
-          const ws = wsRef.current;
-          if (ws && ws.readyState === WebSocket.OPEN) {
+          console.log('[WebRTC] onopen: attempting to send create_room');
+          try {
             ws.send(JSON.stringify({ type: 'create_room', user_name: pending.userName }));
+            console.log('[WebRTC] onopen: create_room sent successfully');
+          } catch (e) {
+            console.error('[WebRTC] onopen: failed to send create_room:', e);
           }
           pendingIntentRef.current = null;
         } else if (pending?.kind === 'join') {
-          console.log('[WebRTC] onopen: sending pending join_room');
-          const ws = wsRef.current;
-          if (ws && ws.readyState === WebSocket.OPEN) {
+          console.log('[WebRTC] onopen: attempting to send join_room');
+          try {
             ws.send(JSON.stringify({ type: 'join_room', room_id: pending.roomId, user_name: pending.userName }));
+            console.log('[WebRTC] onopen: join_room sent successfully');
+          } catch (e) {
+            console.error('[WebRTC] onopen: failed to send join_room:', e);
           }
           pendingIntentRef.current = null;
         }

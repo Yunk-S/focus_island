@@ -201,14 +201,17 @@ async def room_ws(websocket: WebSocket):
             try:
                 msg: dict = json.loads(raw)
             except json.JSONDecodeError:
+                logger.warning(f"[Room] Received invalid JSON from {client_id}: {raw}")
                 await websocket.send_json({"type": "error", "message": "Invalid JSON"})
                 continue
 
+            logger.info(f"[Room] Message from {client_id}: type={msg.get('type')}, msg={msg}")
             msg_type = msg.get("type", "")
             room_id = meta.get("room_id")
 
             # ── create_room ──────────────────────────────────────────────────
             if msg_type == "create_room":
+                logger.info(f"[Room] Received create_room from {client_id}: {msg}")
                 user_name = msg.get("user_name", "Host")
                 new_room = _generate_room_id()
                 _ensure_room(new_room)
@@ -225,6 +228,7 @@ async def room_ws(websocket: WebSocket):
                     ],
                     "is_host": True,
                 })
+                logger.info(f"[Room] Sent room_created response to {client_id}")
 
             # ── join_room ─────────────────────────────────────────────────────
             elif msg_type == "join_room":

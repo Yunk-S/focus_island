@@ -1,4 +1,4 @@
-import React, { useState, useEffect, createContext } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import LoadingScreen from './screens/LoadingScreen';
 import AuthLayout from './screens/AuthLayout';
@@ -15,57 +15,39 @@ import FaceSetupPage from './screens/FaceSetupPage';
 import { BackendProvider } from './hooks/useBackend';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 
-/** 
- * AppContent - 简化版解决 Vite 热重载黑屏问题
+/**
+ * AppContent - 最小化加载逻辑
  * 
- * 策略：始终显示 LoadingScreen，直到所有依赖加载完成
+ * 策略：简单 1.5 秒超时后显示页面，避免任何复杂状态管理导致的黑屏
  */
 
-// 页面是否已完全加载（显示过内容后不再显示 LoadingScreen）
-const LOADED_KEY = 'focus_island_page_loaded';
+// 超时时间（毫秒）
+const LOADING_TIMEOUT = 1500;
 
 function AppContent() {
   const navigate = useNavigate();
   const location = useLocation();
   const { isAuthenticated, isLoading: authLoading } = useAuth();
   
-  // 检查是否已经显示过主页面内容
-  const [pageLoaded, setPageLoaded] = useState(() => {
-    return sessionStorage.getItem(LOADED_KEY) === 'true';
-  });
+  // 使用简单的时间戳追踪加载状态
+  const [loadingStart] = useState(() => Date.now());
+  const [shouldShowPage, setShouldShowPage] = useState(false);
 
-  // 加载完成超时 - 2秒后强制显示页面
+  // 固定超时后显示页面
   useEffect(() => {
-    if (pageLoaded) return;
+    const elapsed = Date.now() - loadingStart;
+    const remaining = Math.max(0, LOADING_TIMEOUT - elapsed);
     
     const timer = setTimeout(() => {
-      sessionStorage.setItem(LOADED_KEY, 'true');
-      setPageLoaded(true);
-      console.log('[App] Loading timeout, showing page');
-    }, 2000);
+      setShouldShowPage(true);
+    }, remaining);
     
     return () => clearTimeout(timer);
-  }, [pageLoaded]);
+  }, [loadingStart]);
 
-  // 监听后端连接成功事件
+  // 路由重定向（仅在页面可见时执行）
   useEffect(() => {
-    if (pageLoaded) return;
-    
-    // 检查是否有后端连接成功的日志
-    const checkBackendConnection = setInterval(() => {
-      // 通过检查 sessionStorage 中的标记
-      if (sessionStorage.getItem(LOADED_KEY) === 'true') {
-        setPageLoaded(true);
-        clearInterval(checkBackendConnection);
-      }
-    }, 500);
-    
-    return () => clearInterval(checkBackendConnection);
-  }, [pageLoaded]);
-
-  // 路由重定向
-  useEffect(() => {
-    if (!pageLoaded || authLoading) return;
+    if (!shouldShowPage || authLoading) return;
 
     const path = location.pathname;
 
@@ -83,10 +65,10 @@ function AppContent() {
     if (path === '/login') {
       navigate('/personal', { replace: true });
     }
-  }, [pageLoaded, authLoading, isAuthenticated, location.pathname, navigate]);
+  }, [shouldShowPage, authLoading, isAuthenticated, location.pathname, navigate]);
 
-  // 未加载完成时显示 LoadingScreen
-  if (!pageLoaded) {
+  // 加载中显示 LoadingScreen
+  if (!shouldShowPage) {
     return <LoadingScreen />;
   }
 

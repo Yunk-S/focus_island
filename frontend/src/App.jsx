@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, createContext } from 'react';
+import React, { useState, useEffect, createContext } from 'react';
 import { Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import LoadingScreen from './screens/LoadingScreen';
 import AuthLayout from './screens/AuthLayout';
@@ -15,47 +15,55 @@ import FaceSetupPage from './screens/FaceSetupPage';
 import { BackendProvider } from './hooks/useBackend';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 
-export const AppContext = createContext(null);
+/** 
+ * 简化版 AppContent - 解决 Vite 热重载黑屏问题
+ * 
+ * 问题根因:
+ * 1. useState 初始化函数只在首次挂载时执行，热重载后状态重置
+ * 2. 导出的 AppContext 导致热更新失败 (HMR invalidate)
+ * 
+ * 解决方案:
+ * 1. 使用 sessionStorage 直接读取 + state 更新模式
+ * 2. 移除 AppContext 导出，避免 HMR 冲突
+ */
 
-/** Application entry is mostly `/`, must match routes, otherwise Router won't render any page (black screen). */
-function RootRedirect() {
-  const { isAuthenticated } = useAuth();
-  return <Navigate to={isAuthenticated ? '/personal' : '/login'} replace />;
-}
+// 持久化标记：在整个页面生命周期内只显示一次 LoadingScreen
+const INITIAL_LOAD_KEY = 'focus_island_initialized';
 
 function AppContent() {
   const navigate = useNavigate();
   const location = useLocation();
   const { isAuthenticated, isLoading: authLoading } = useAuth();
   
-  // 使用 sessionStorage 避免 Vite 热重载导致状态重置
-  // 首次加载后标记，以后刷新页面不会重新显示加载画面
-  const initialLoadedRef = useRef(sessionStorage.getItem('initial_loaded') === 'true');
-  const [, forceUpdate] = useState(0);
+  // 从 sessionStorage 读取初始状态（热重载后仍然保留）
+  const [initialized, setInitialized] = useState(() => {
+    return sessionStorage.getItem(INITIAL_LOAD_KEY) === 'true';
+  });
 
-  // 初始化延迟（首次加载时）
+  // 初始化延迟 - 只在未初始化时执行
   useEffect(() => {
-    if (!initialLoadedRef.current) {
-      const timer = setTimeout(() => {
-        initialLoadedRef.current = true;
-        sessionStorage.setItem('initial_loaded', 'true');
-        forceUpdate(k => k + 1);  // 触发重新渲染
-      }, 2000);  // 2秒足够后端连接
-      return () => clearTimeout(timer);
-    }
-  }, []);
+    if (initialized) return;  // 已初始化则跳过
+    
+    const timer = setTimeout(() => {
+      sessionStorage.setItem(INITIAL_LOAD_KEY, 'true');
+      setInitialized(true);
+    }, 2000);  // 2秒足够后端连接
+    
+    return () => clearTimeout(timer);
+  }, [initialized]);
 
-  // Only redirect when path is login, register, forgot password page, or when not authenticated, to avoid interrupting /ambient, /live routes
+  // 路由重定向逻辑
   useEffect(() => {
-    if (!initialLoadedRef.current || authLoading) return;
+    if (!initialized || authLoading) return;
 
     const path = location.pathname;
 
-    // Keep authenticated users on current page when visiting auth pages
+    // 已登录用户停留在注册/忘记密码页
     if (isAuthenticated && (path === '/register' || path === '/forgot-password')) {
       return;
     }
 
+    // 未登录用户重定向到登录页
     if (!isAuthenticated) {
       if (path !== '/login' && path !== '/register' && path !== '/forgot-password') {
         navigate('/login', { replace: true });
@@ -63,14 +71,14 @@ function AppContent() {
       return;
     }
 
-    // Redirect authenticated users from login page to personal page
+    // 已登录用户从登录页重定向到个人页
     if (path === '/login') {
       navigate('/personal', { replace: true });
     }
-  }, [authLoading, isAuthenticated, location.pathname, navigate]);
+  }, [initialized, authLoading, isAuthenticated, location.pathname, navigate]);
 
-  // 首次加载时显示 LoadingScreen
-  if (!initialLoadedRef.current) {
+  // 未初始化时显示加载画面
+  if (!initialized) {
     return <LoadingScreen />;
   }
 
@@ -94,6 +102,13 @@ function AppContent() {
   );
 }
 
+/** 应用入口重定向 - 根据认证状态跳转 */
+function RootRedirect() {
+  const { isAuthenticated } = useAuth();
+  return <Navigate to={isAuthenticated ? '/personal' : '/login'} replace />;
+}
+
+/** 主应用入口 - 包含 Context Providers */
 function App() {
   return (
     <BackendProvider>

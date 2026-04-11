@@ -34,7 +34,13 @@ function readRoomWsPort() {
 }
 
 const focusIslandRoomWsPort = readRoomWsPort();
-const focusIslandRoomWsUrl = `ws://127.0.0.1:${focusIslandRoomWsPort}/ws/room`;
+
+// 支持自定义 Room Server URL（用于跨机器测试）
+// 设置环境变量 VITE_ROOM_SERVER_URL 即可覆盖默认配置
+const customRoomServerUrl = process.env.VITE_ROOM_SERVER_URL || '';
+const focusIslandRoomWsUrl = customRoomServerUrl
+  ? customRoomServerUrl
+  : `ws://127.0.0.1:${focusIslandRoomWsPort}/ws/room`;
 
 export default defineConfig({
   plugins: [react()],

@@ -144,6 +144,30 @@ async def health():
     return {"status": "ok", "timestamp": time.time(), "rooms": len(rooms)}
 
 
+@app.get("/api/room/server-info")
+async def get_server_info():
+    """Return server info for clients to configure signaling connection."""
+    import socket
+    hostname = socket.gethostname()
+    try:
+        # 获取本机局域网 IP
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        local_ip = s.getsockname()[0]
+        s.close()
+    except Exception:
+        local_ip = "127.0.0.1"
+    
+    return {
+        "status": "ok",
+        "hostname": hostname,
+        "local_ip": local_ip,
+        "default_port": 8766,
+        "ws_path": "/ws/room",
+        "ws_url_template": f"ws://{{host}}:{8766}/ws/room"
+    }
+
+
 @app.get("/api/room/new")
 async def create_room(user_name: str = "Host"):
     """Create a new private room and return its invite code (room_id)."""

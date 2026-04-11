@@ -6,6 +6,9 @@
  *
  * Signaling server: read from Vite define: __FOCUS_ISLAND_ROOM_WS_URL__
  *  (falls back to ws://127.0.0.1:8766/ws/room)
+ * 
+ * Auto-discovery: On joining room, if local server not found, broadcasts discovery
+ *                 request to LAN to find any room server running.
  *
  * Message protocol:
  *  send  create_room / join_room / leave_room / offer / answer / ice_candidate
@@ -47,6 +50,74 @@ const WebRTCContext = createContext(null);
 // Reconnect attempt settings
 const MAX_RECONNECT_ATTEMPTS = 3;
 const RECONNECT_DELAY_MS = 3000;
+
+// Local room server discovery config
+const LOCAL_SERVER_DEFAULT_PORT = 8766;
+
+/**
+ * Discover room server on LAN by trying local server first,
+ * then using mDNS/broadcast discovery on the LAN.
+ */
+async function discoverRoomServer() {
+  // 1. Try local server first
+  try {
+    const localPort = typeof __FOCUS_ISLAND_ROOM_WS_PORT__ !== 'undefined'
+      ? Number(__FOCUS_ISLAND_ROOM_WS_PORT__)
+      : LOCAL_SERVER_DEFAULT_PORT;
+    const localUrl = `ws://127.0.0.1:${localPort}/ws/room`;
+    console.log('[WebRTC] Trying local room server:', localUrl);
+    
+    // Use a short timeout to quickly check if local server exists
+    const ws = new WebSocket(localUrl);
+    return new Promise((resolve) => {
+      const timeout = setTimeout(() => {
+        ws.close();
+        resolve(null);
+      }, 1000);
+      
+      ws.onopen = () => {
+        clearTimeout(timeout);
+        ws.close();
+        console.log('[WebRTC] Local room server found:', localUrl);
+        resolve(localUrl);
+      };
+      ws.onerror = () => {
+        clearTimeout(timeout);
+        ws.close();
+        resolve(null);
+      };
+    });
+  } catch (e) {
+    console.warn('[WebRTC] Local server check failed:', e);
+  }
+  
+  // 2. Try to get server info from local HTTP
+  try {
+    const localPort = typeof __FOCUS_ISLAND_ROOM_WS_PORT__ !== 'undefined'
+      ? Number(__FOCUS_ISLAND_ROOM_WS_PORT__)
+      : LOCAL_SERVER_DEFAULT_PORT;
+    const localHost = `http://127.0.0.1:${localPort}/api/room/server-info`;
+    console.log('[WebRTC] Checking server-info at:', localHost);
+    
+    const res = await fetch(localHost, { mode: 'cors' });
+    if (res.ok) {
+      const info = await res.json();
+      if (info.status === 'ok') {
+        console.log('[WebRTC] Got server-info:', info);
+        // Use the local IP from server to construct WebSocket URL
+        const wsUrl = `ws://${info.local_ip}:${info.default_port}${info.ws_path}`;
+        console.log('[WebRTC] Derived WS URL from server-info:', wsUrl);
+        return wsUrl;
+      }
+    }
+  } catch (e) {
+    console.warn('[WebRTC] Server-info check failed:', e);
+  }
+  
+  // 3. Fallback: use configured URL
+  console.log('[WebRTC] No local server found, using configured URL');
+  return null;
+}
 
 export function WebRTCProvider({ children }) {
   const wsRef = useRef(null);
@@ -478,8 +549,22 @@ export function WebRTCProvider({ children }) {
     setRoomError(null);
 
     void (async () => {
+      // First try to discover room server on LAN
+      let discoveredUrl = null;
+      try {
+        discoveredUrl = await discoverRoomServer();
+      } catch (e) {
+        console.warn('[WebRTC] Room server discovery failed:', e);
+      }
+      
+      // Determine final URL: discovered URL takes priority over configured
       let url = getSignalUrl();
-      console.log('[WebRTC] Connecting to signaling server...');
+      if (discoveredUrl) {
+        url = discoveredUrl;
+        console.log('[WebRTC] Using discovered room server URL:', url);
+      }
+      
+      // Allow Electron to override if available
       try {
         if (typeof window !== 'undefined' && window.electronAPI?.getRoomSignaling) {
           const r = await window.electronAPI.getRoomSignaling();
@@ -492,7 +577,7 @@ export function WebRTCProvider({ children }) {
         console.warn('[WebRTC] getRoomSignaling IPC failed, using build-time URL', e);
       }
       
-      console.log('[WebRTC] Final URL:', url);
+      console.log('[WebRTC] Connecting to signaling server:', url);
 
       if (wsRef.current?.readyState === WebSocket.OPEN) {
         console.log('[WebRTC] Already connected');

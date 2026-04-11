@@ -42,6 +42,9 @@ const focusIslandRoomWsUrl = customRoomServerUrl
   ? customRoomServerUrl
   : `ws://127.0.0.1:${focusIslandRoomWsPort}/ws/room`;
 
+// 本地房间服务发现默认地址
+const localRoomServerUrl = `http://127.0.0.1:${focusIslandRoomWsPort}`;
+
 export default defineConfig({
   plugins: [react()],
   base: './',
@@ -67,5 +70,6 @@ export default defineConfig({
     __FOCUS_ISLAND_WS_PORT__: JSON.stringify(focusIslandWsPort),
     __FOCUS_ISLAND_ROOM_WS_PORT__: JSON.stringify(focusIslandRoomWsPort),
     __FOCUS_ISLAND_ROOM_WS_URL__: JSON.stringify(focusIslandRoomWsUrl),
+    __FOCUS_ISLAND_LOCAL_ROOM_SERVER__: JSON.stringify(localRoomServerUrl),
   },
 });

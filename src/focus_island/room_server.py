@@ -23,6 +23,7 @@ from typing import Any
 import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from websockets.exceptions import ConnectionClosed, ConnectionClosedOK
 
 logging.basicConfig(
     level=logging.INFO,
@@ -79,7 +80,11 @@ def _broadcast(room_id: str, payload: dict, exclude: WebSocket | None = None) ->
         if ws is exclude:
             continue
         try:
-            asyncio.create_task(ws.send_json(payload))
+            # Use websockets-friendly check before sending
+            if ws.client_state == ws.CLIENT_CONNECTED:
+                asyncio.create_task(ws.send_json(payload))
+        except (ConnectionClosedOK, ConnectionClosed):
+            dead.append(ws)
         except Exception:
             dead.append(ws)
     for ws in dead:
@@ -89,7 +94,10 @@ def _broadcast(room_id: str, payload: dict, exclude: WebSocket | None = None) ->
 def _send_to(ws: WebSocket, payload: dict) -> None:
     """Send JSON payload to a single client."""
     try:
-        asyncio.create_task(ws.send_json(payload))
+        if ws.client_state == ws.CLIENT_CONNECTED:
+            asyncio.create_task(ws.send_json(payload))
+    except (ConnectionClosedOK, ConnectionClosed):
+        _disconnect(ws)
     except Exception:
         pass
 

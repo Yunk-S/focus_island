@@ -1,4 +1,4 @@
-import React, { useState, useEffect, createContext } from 'react';
+import React, { useState, useEffect, useRef, createContext } from 'react';
 import { Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import LoadingScreen from './screens/LoadingScreen';
 import AuthLayout from './screens/AuthLayout';
@@ -27,16 +27,27 @@ function AppContent() {
   const navigate = useNavigate();
   const location = useLocation();
   const { isAuthenticated, isLoading: authLoading } = useAuth();
-  const [initialLoading, setInitialLoading] = useState(true);
+  
+  // 使用 sessionStorage 避免 Vite 热重载导致状态重置
+  // 首次加载后标记，以后刷新页面不会重新显示加载画面
+  const initialLoadedRef = useRef(sessionStorage.getItem('initial_loaded') === 'true');
+  const [, forceUpdate] = useState(0);
 
+  // 初始化延迟（首次加载时）
   useEffect(() => {
-    const timer = setTimeout(() => setInitialLoading(false), 3000);
-    return () => clearTimeout(timer);
+    if (!initialLoadedRef.current) {
+      const timer = setTimeout(() => {
+        initialLoadedRef.current = true;
+        sessionStorage.setItem('initial_loaded', 'true');
+        forceUpdate(k => k + 1);  // 触发重新渲染
+      }, 2000);  // 2秒足够后端连接
+      return () => clearTimeout(timer);
+    }
   }, []);
 
   // Only redirect when path is login, register, forgot password page, or when not authenticated, to avoid interrupting /ambient, /live routes
   useEffect(() => {
-    if (initialLoading || authLoading) return;
+    if (!initialLoadedRef.current || authLoading) return;
 
     const path = location.pathname;
 
@@ -56,9 +67,10 @@ function AppContent() {
     if (path === '/login') {
       navigate('/personal', { replace: true });
     }
-  }, [initialLoading, authLoading, isAuthenticated, location.pathname, navigate]);
+  }, [authLoading, isAuthenticated, location.pathname, navigate]);
 
-  if (initialLoading || authLoading) {
+  // 首次加载时显示 LoadingScreen
+  if (!initialLoadedRef.current) {
     return <LoadingScreen />;
   }
 

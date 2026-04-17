@@ -12,6 +12,8 @@ import ProfilePage from './screens/ProfilePage';
 import AccountPage from './screens/AccountPage';
 import SettingsPage from './screens/SettingsPage';
 import FaceSetupPage from './screens/FaceSetupPage';
+import FriendsPage from './screens/FriendsPage';
+import ProPage from './screens/ProPage';
 import { BackendProvider } from './hooks/useBackend';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 
@@ -87,6 +89,8 @@ function AppContent() {
       <Route path="/profile" element={<ProfilePage />} />
       <Route path="/account" element={<AccountPage />} />
       <Route path="/settings" element={<SettingsPage />} />
+      <Route path="/friends" element={<FriendsPage />} />
+      <Route path="/pro" element={<ProPage />} />
       <Route path="/live/*" element={<LiveModePage />} />
     </Routes>
   );

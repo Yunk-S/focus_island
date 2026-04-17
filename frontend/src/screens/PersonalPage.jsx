@@ -13,6 +13,8 @@ import {
   Settings,
   ChevronRight,
   ScanFace,
+  Users,
+  Crown,
 } from 'lucide-react';
 
 function PersonalPage() {
@@ -53,6 +55,25 @@ function PersonalPage() {
       descKey: 'personal.settingsDesc',
       path: '/settings',
       color: 'hover:border-foreground/20',
+    },
+  ];
+
+  const socialLinks = [
+    {
+      icon: <Users className="size-5 text-pink-400" />,
+      titleKey: 'personal.friendsTitle',
+      descKey: 'personal.friendsDesc',
+      path: '/friends',
+      color: 'hover:border-pink-500/40',
+      bgColor: 'bg-pink-500/10',
+    },
+    {
+      icon: <Crown className="size-5 text-accent-gold" />,
+      titleKey: 'personal.proTitle',
+      descKey: 'personal.proDesc',
+      path: '/pro',
+      color: 'hover:border-accent-gold/40',
+      bgColor: 'bg-accent-gold/10',
     },
   ];
 
@@ -135,7 +156,37 @@ function PersonalPage() {
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.08, duration: 0.45 }}
-          className="mb-10 grid grid-cols-1 gap-4 sm:grid-cols-3"
+          className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2"
+        >
+          {socialLinks.map((link, i) => (
+            <motion.button
+              key={link.path}
+              type="button"
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.1 + i * 0.05 }}
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => navigate(link.path)}
+              className={`flex items-center gap-4 rounded-2xl border border-border/40 bg-card/70 p-5 text-left shadow-lg backdrop-blur-xl transition-all ${link.color}`}
+            >
+              <div className={`flex size-12 shrink-0 items-center justify-center rounded-xl ${link.bgColor}`}>
+                {link.icon}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="font-semibold text-foreground">{t(link.titleKey)}</p>
+                <p className="text-xs text-muted-foreground">{t(link.descKey)}</p>
+              </div>
+              <ChevronRight className="size-5 shrink-0 text-muted-foreground" />
+            </motion.button>
+          ))}
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.12, duration: 0.45 }}
+          className="mb-10 grid grid-cols-1 gap-4 sm:grid-cols-4"
         >
           {quickLinks.map((link, i) => (
             <motion.button

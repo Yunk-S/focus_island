@@ -59,7 +59,7 @@ const LOCAL_SERVER_DEFAULT_PORT = 8766;
  * then using mDNS/broadcast discovery on the LAN.
  */
 async function discoverRoomServer() {
-  // 1. Try local server first
+  // 1. Try local server first - quick WebSocket check with short timeout
   try {
     const localPort = typeof __FOCUS_ISLAND_ROOM_WS_PORT__ !== 'undefined'
       ? Number(__FOCUS_ISLAND_ROOM_WS_PORT__)
@@ -67,13 +67,13 @@ async function discoverRoomServer() {
     const localUrl = `ws://127.0.0.1:${localPort}/ws/room`;
     console.log('[WebRTC] Trying local room server:', localUrl);
     
-    // Use a short timeout to quickly check if local server exists
+    // Quick check with AbortController
     const ws = new WebSocket(localUrl);
     return new Promise((resolve) => {
       const timeout = setTimeout(() => {
-        ws.close();
+        try { ws.close(); } catch { /* ignore */ }
         resolve(null);
-      }, 1000);
+      }, 800);
       
       ws.onopen = () => {
         clearTimeout(timeout);
@@ -83,7 +83,7 @@ async function discoverRoomServer() {
       };
       ws.onerror = () => {
         clearTimeout(timeout);
-        ws.close();
+        try { ws.close(); } catch { /* ignore */ }
         resolve(null);
       };
     });
@@ -91,30 +91,7 @@ async function discoverRoomServer() {
     console.warn('[WebRTC] Local server check failed:', e);
   }
   
-  // 2. Try to get server info from local HTTP
-  try {
-    const localPort = typeof __FOCUS_ISLAND_ROOM_WS_PORT__ !== 'undefined'
-      ? Number(__FOCUS_ISLAND_ROOM_WS_PORT__)
-      : LOCAL_SERVER_DEFAULT_PORT;
-    const localHost = `http://127.0.0.1:${localPort}/api/room/server-info`;
-    console.log('[WebRTC] Checking server-info at:', localHost);
-    
-    const res = await fetch(localHost, { mode: 'cors' });
-    if (res.ok) {
-      const info = await res.json();
-      if (info.status === 'ok') {
-        console.log('[WebRTC] Got server-info:', info);
-        // Use the local IP from server to construct WebSocket URL
-        const wsUrl = `ws://${info.local_ip}:${info.default_port}${info.ws_path}`;
-        console.log('[WebRTC] Derived WS URL from server-info:', wsUrl);
-        return wsUrl;
-      }
-    }
-  } catch (e) {
-    console.warn('[WebRTC] Server-info check failed:', e);
-  }
-  
-  // 3. Fallback: use configured URL
+  // 2. Fallback: use configured URL immediately
   console.log('[WebRTC] No local server found, using configured URL');
   return null;
 }

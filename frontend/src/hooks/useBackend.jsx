@@ -87,7 +87,18 @@ export function BackendProvider({ children }) {
       const ws = new WebSocket(`ws://127.0.0.1:${wsPort}`);
       wsRef.current = ws;
 
+      // Connection timeout - fail fast if backend not running
+      const connectionTimeout = setTimeout(() => {
+        if (ws.readyState !== WebSocket.OPEN) {
+          console.warn('[WS] Connection timeout, closing socket');
+          ws.close();
+          setConnectionState(WS_STATE.ERROR);
+          setError('Backend connection timeout - is the server running?');
+        }
+      }, 5000);
+
       ws.onopen = () => {
+        clearTimeout(connectionTimeout);
         console.log('[WS] Connected to backend');
         setConnectionState(WS_STATE.CONNECTED);
         setSystemInfo(prev => ({ ...prev, backend_ready: true }));
@@ -113,6 +124,7 @@ export function BackendProvider({ children }) {
       };
 
       ws.onclose = () => {
+        clearTimeout(connectionTimeout);  // Clear any pending timeout
         console.log('[WS] Disconnected from backend');
         setConnectionState(WS_STATE.DISCONNECTED);
         setSystemInfo(prev => ({ ...prev, backend_ready: false }));

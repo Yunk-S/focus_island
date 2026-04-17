@@ -1,12 +1,23 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Copy, Check, User } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useI18n } from '../i18n/I18nContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+
+function generateUniqueId() {
+  const segments = [4, 4, 4];
+  return 'FI-' + segments.map((len) => {
+    let result = '';
+    for (let i = 0; i < len; i++) {
+      result += Math.floor(Math.random() * 10);
+    }
+    return result;
+  }).join('-');
+}
 
 function AccountPage() {
   const navigate = useNavigate();
@@ -15,6 +26,12 @@ function AccountPage() {
   const [name, setName] = useState(user?.name || '');
   const [email, setEmail] = useState(user?.email || '');
   const [saved, setSaved] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const uniqueId = useMemo(() => {
+    if (user?.uniqueId) return user.uniqueId;
+    return generateUniqueId();
+  }, [user?.id]);
 
   if (!user) {
     navigate('/login');
@@ -22,9 +39,19 @@ function AccountPage() {
   }
 
   const handleSave = () => {
-    updateUser({ name: name.trim() || user.name, email: email.trim() || user.email });
+    updateUser({ name: name.trim() || user.name, email: email.trim() || user.email, uniqueId });
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
+  };
+
+  const handleCopyId = async () => {
+    try {
+      await navigator.clipboard.writeText(uniqueId);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // fallback
+    }
   };
 
   return (
@@ -65,6 +92,35 @@ function AccountPage() {
               onChange={(e) => setEmail(e.target.value)}
               className="h-11"
             />
+          </div>
+          <div className="space-y-2 border-t border-border/30 pt-4">
+            <Label>{t('account.uniqueId')}</Label>
+            <div className="flex items-center gap-3">
+              <div className="flex flex-1 items-center gap-3 rounded-xl border border-border/40 bg-muted/30 px-4 py-3">
+                <User className="size-4 text-primary shrink-0" />
+                <span className="font-mono font-semibold text-foreground tracking-wider">{uniqueId}</span>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleCopyId}
+                className="shrink-0 gap-2"
+              >
+                {copied ? (
+                  <>
+                    <Check className="size-4 text-green-500" />
+                    <span className="text-green-500">{t('account.idCopied')}</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="size-4" />
+                    <span>{t('account.copyId')}</span>
+                  </>
+                )}
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">{t('account.uniqueIdHint')}</p>
           </div>
           {saved && <p className="text-sm text-green-500">{t('account.saved')}</p>}
           <Button type="button" className="w-full" onClick={handleSave}>

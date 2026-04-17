@@ -357,6 +357,7 @@ export default {
     userNotFound: '用户不存在',
     removeSuccess: '已删除好友',
     chatWith: '与 {{name}} 聊天',
+    autoReply: '收到消息了！',
   },
   pro: {
     title: 'Pro会员',

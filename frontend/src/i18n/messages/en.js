@@ -359,6 +359,7 @@ export default {
     userNotFound: 'User not found',
     removeSuccess: 'Friend removed',
     chatWith: 'Chatting with {{name}}',
+    autoReply: 'Got it!',
   },
   pro: {
     title: 'Pro Member',

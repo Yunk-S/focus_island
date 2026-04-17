@@ -53,9 +53,14 @@ function AvatarImage({ src, name, className }) {
   return <img src={src} alt="" className={className} onError={() => setFailed(true)} />;
 }
 
-function ChatBubble({ message, isSelf }) {
+function ChatBubble({ message, isSelf, locale }) {
   return (
-    <div className={`flex ${isSelf ? 'justify-end' : 'justify-start'}`}>
+    <motion.div
+      initial={{ opacity: 0, y: 10, scale: 0.95 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ duration: 0.2, ease: 'easeOut' }}
+      className={`flex ${isSelf ? 'justify-end' : 'justify-start'}`}
+    >
       <div
         className={`max-w-[75%] rounded-2xl px-4 py-2.5 ${
           isSelf
@@ -79,16 +84,16 @@ function ChatBubble({ message, isSelf }) {
           <p className="text-sm leading-relaxed">{message.content}</p>
         )}
         <p className={`text-[10px] mt-1 ${isSelf ? 'text-white/60' : 'text-muted-foreground'}`}>
-          {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          {new Date(message.timestamp).toLocaleTimeString(locale === 'zh' ? 'zh-CN' : 'en-US', { hour: '2-digit', minute: '2-digit' })}
         </p>
       </div>
-    </div>
+    </motion.div>
   );
 }
 
 function FriendsPage() {
   const navigate = useNavigate();
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('friends');
   const [searchQuery, setSearchQuery] = useState('');
@@ -121,7 +126,7 @@ function FriendsPage() {
     setInputText('');
     // Simulate reply
     setTimeout(() => {
-      const reply = { id: Date.now() + 1, content: '收到消息了！', type: 'text', sender: 'other', timestamp: Date.now() };
+      const reply = { id: Date.now() + 1, content: t('friends.autoReply'), type: 'text', sender: 'other', timestamp: Date.now() };
       setMessages((prev) => ({
         ...prev,
         [selectedFriend.id]: [...(prev[selectedFriend.id] || []), reply],
@@ -296,10 +301,13 @@ function FriendsPage() {
               friends.length === 0 ? (
                 <p className="text-center text-sm text-muted-foreground py-8">{t('friends.noFriends')}</p>
               ) : (
-                friends.map((friend) => (
-                  <button
+                friends.map((friend, index) => (
+                  <motion.button
                     key={friend.id}
                     type="button"
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: index * 0.05 }}
                     onClick={() => setSelectedFriend(friend)}
                     className={`w-full flex items-center gap-3 rounded-xl p-3 text-left transition-colors ${
                       selectedFriend?.id === friend.id
@@ -321,7 +329,7 @@ function FriendsPage() {
                       <p className="text-sm font-medium text-foreground truncate">{friend.name}</p>
                       <p className="text-xs text-muted-foreground truncate">{friend.lastMessage}</p>
                     </div>
-                  </button>
+                  </motion.button>
                 ))
               )
             ) : requests.length === 0 ? (
@@ -387,7 +395,7 @@ function FriendsPage() {
                   <p className="text-center text-sm text-muted-foreground py-8">{t('live.chatEmpty')}</p>
                 ) : (
                   currentMessages.map((msg) => (
-                    <ChatBubble key={msg.id} message={msg} isSelf={msg.sender === 'self'} />
+                    <ChatBubble key={msg.id} message={msg} isSelf={msg.sender === 'self'} locale={locale} />
                   ))
                 )}
                 <div ref={chatEndRef} />

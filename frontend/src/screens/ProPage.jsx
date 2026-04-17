@@ -31,8 +31,6 @@ const PRICING_PLANS = [
     price: 100,
     period: 'year',
     priceKey: 'pro.perYear',
-    badge: 'Best Value',
-    badgeColor: 'bg-accent-gold/20 text-accent-gold',
   },
   {
     id: 'monthly_sub',
@@ -51,6 +49,8 @@ const PRICING_PLANS = [
     price: 90,
     period: 'year',
     priceKey: 'pro.perYear',
+    badge: 'Best Value',
+    badgeColor: 'bg-accent-gold/20 text-accent-gold',
     tag: 'Auto-renew',
     tagColor: 'bg-accent-mint/15 text-accent-mint',
   },
@@ -186,7 +186,7 @@ function ProPage() {
                     <h4 className="font-semibold text-foreground mb-1">{t(plan.nameKey)}</h4>
                     <p className="text-xs text-muted-foreground mb-3">{t(plan.descKey, { price: plan.id === 'yearly' ? '8.33' : plan.price })}</p>
                     <p className="text-2xl font-bold text-foreground">
-                      {t(plan.priceKey, { price: plan.price })}
+                      ${plan.price}{plan.period === 'year' ? '/year' : '/month'}
                     </p>
                     {selectedPlan === plan.id && (
                       <div className="absolute top-3 right-3 size-5 rounded-full bg-primary flex items-center justify-center">

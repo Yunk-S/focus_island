@@ -174,12 +174,12 @@ function ProPage() {
                     onClick={() => setSelectedPlan(plan.id)}
                   >
                     {plan.badge && (
-                      <span className={`absolute -top-2.5 left-1/2 -translate-x-1/2 px-3 py-0.5 rounded-full text-xs font-medium ${plan.badgeColor}`}>
+                      <span className={`absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 rounded-full text-xs font-medium whitespace-nowrap ${plan.badgeColor}`}>
                         {plan.badge}
                       </span>
                     )}
                     {plan.tag && (
-                      <span className={`absolute -top-2.5 right-2 px-2 py-0.5 rounded-full text-[10px] font-medium ${plan.tagColor}`}>
+                      <span className={`absolute -top-2 right-2 px-2 py-0.5 rounded-full text-[10px] font-medium ${plan.tagColor}`}>
                         {plan.tag}
                       </span>
                     )}

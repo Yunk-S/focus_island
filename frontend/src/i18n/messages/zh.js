@@ -358,6 +358,10 @@ export default {
     removeSuccess: '已删除好友',
     chatWith: '与 {{name}} 聊天',
     autoReply: '收到消息了！',
+    pinnedContacts: '置顶',
+    aiAssistant: 'AI 助手 — 技巧与帮助',
+    focusWeekly: '周报 — 每周日发送',
+    focusMonthly: '月报 — 每月末发送',
   },
   pro: {
     title: 'Pro会员',

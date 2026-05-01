@@ -26,6 +26,54 @@ import { Input } from '@/components/ui/input';
 
 const EMOJI_LIST = ['😀', '😂', '😍', '🥰', '😎', '🤩', '😜', '🤗', '🥳', '😴', '🤔', '😅'];
 
+const PINNED_CONTACTS = [
+  {
+    id: 'ai-assistant',
+    name: 'AI Assistant',
+    uniqueId: 'AI-TOOL-0000-0001',
+    avatar: null,
+    isOnline: true,
+    lastMessage: '',
+    lastActive: Date.now(),
+    isPinned: true,
+    pinnedLabel: 'aiAssistant',
+    pinnedColor: 'from-blue-500 to-purple-600',
+    pinnedBg: 'bg-blue-500/10',
+    pinnedBorder: 'border-blue-500/30',
+    pinnedText: 'text-blue-400',
+  },
+  {
+    id: 'focus-weekly',
+    name: 'Focus Weekly',
+    uniqueId: 'FI-REPORT-WEEKLY',
+    avatar: null,
+    isOnline: true,
+    lastMessage: '',
+    lastActive: Date.now(),
+    isPinned: true,
+    pinnedLabel: 'focusWeekly',
+    pinnedColor: 'from-green-500 to-teal-600',
+    pinnedBg: 'bg-green-500/10',
+    pinnedBorder: 'border-green-500/30',
+    pinnedText: 'text-green-400',
+  },
+  {
+    id: 'focus-monthly',
+    name: 'Focus Monthly',
+    uniqueId: 'FI-REPORT-MONTHLY',
+    avatar: null,
+    isOnline: true,
+    lastMessage: '',
+    lastActive: Date.now(),
+    isPinned: true,
+    pinnedLabel: 'focusMonthly',
+    pinnedColor: 'from-amber-500 to-orange-600',
+    pinnedBg: 'bg-amber-500/10',
+    pinnedBorder: 'border-amber-500/30',
+    pinnedText: 'text-amber-400',
+  },
+];
+
 const mockFriends = [
   { id: 'f1', name: 'Emma Wilson', uniqueId: 'FI-1234-5678-9012', avatar: null, isOnline: true, lastMessage: '一起专注吧！', lastActive: Date.now() },
   { id: 'f2', name: 'Yunkun', uniqueId: 'FI-2345-6789-0123', avatar: null, isOnline: true, lastMessage: '加油！', lastActive: Date.now() },
@@ -298,40 +346,82 @@ function FriendsPage() {
 
           <div className="flex-1 overflow-y-auto p-2 space-y-1">
             {activeTab === 'friends' ? (
-              friends.length === 0 ? (
-                <p className="text-center text-sm text-muted-foreground py-8">{t('friends.noFriends')}</p>
-              ) : (
-                friends.map((friend, index) => (
-                  <motion.button
-                    key={friend.id}
-                    type="button"
-                    initial={{ opacity: 0, x: -10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: index * 0.05 }}
-                    onClick={() => setSelectedFriend(friend)}
-                    className={`w-full flex items-center gap-3 rounded-xl p-3 text-left transition-colors ${
-                      selectedFriend?.id === friend.id
-                        ? 'bg-primary/15 border border-primary/30'
-                        : 'hover:bg-muted/50'
-                    }`}
-                  >
-                    <div className="relative">
-                      <AvatarImage
-                        src={friend.avatar || buildDicebearAvatarUrl(friend.name)}
-                        name={friend.name}
-                        className="size-10 rounded-full"
-                      />
-                      {friend.isOnline && (
-                        <span className="absolute -bottom-0.5 -right-0.5 size-3 rounded-full bg-green-500 border-2 border-background" />
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-foreground truncate">{friend.name}</p>
-                      <p className="text-xs text-muted-foreground truncate">{friend.lastMessage}</p>
-                    </div>
-                  </motion.button>
-                ))
-              )
+              <>
+                {PINNED_CONTACTS.length > 0 && (
+                  <>
+                    <p className="px-3 py-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      {t('friends.pinnedContacts')}
+                    </p>
+                    {PINNED_CONTACTS.map((contact) => (
+                      <motion.button
+                        key={contact.id}
+                        type="button"
+                        initial={{ opacity: 0, x: -10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: 0 }}
+                        onClick={() => setSelectedFriend(contact)}
+                        className={`w-full flex items-center gap-3 rounded-xl p-3 text-left transition-colors border ${
+                          selectedFriend?.id === contact.id
+                            ? `${contact.pinnedBg} ${contact.pinnedBorder}`
+                            : 'hover:bg-muted/50'
+                        }`}
+                      >
+                        <div className="relative">
+                          <div
+                            className={`size-10 rounded-full flex items-center justify-center bg-gradient-to-br ${contact.pinnedColor} text-white text-sm font-bold`}
+                          >
+                            {contact.name.slice(0, 2)}
+                          </div>
+                          <span className="absolute -bottom-0.5 -right-0.5 size-3 rounded-full bg-green-500 border-2 border-background" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-foreground truncate">{contact.name}</p>
+                          <p className={`text-xs truncate ${contact.pinnedText}`}>
+                            {t(`friends.${contact.pinnedLabel}`)}
+                          </p>
+                        </div>
+                        <Crown className={`size-3.5 shrink-0 ${contact.pinnedText}`} />
+                      </motion.button>
+                    ))}
+                    <div className="border-t border-border/20 my-1" />
+                  </>
+                )}
+
+                {friends.length === 0 ? (
+                  <p className="text-center text-sm text-muted-foreground py-8">{t('friends.noFriends')}</p>
+                ) : (
+                  friends.map((friend, index) => (
+                    <motion.button
+                      key={friend.id}
+                      type="button"
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: index * 0.05 }}
+                      onClick={() => setSelectedFriend(friend)}
+                      className={`w-full flex items-center gap-3 rounded-xl p-3 text-left transition-colors ${
+                        selectedFriend?.id === friend.id
+                          ? 'bg-primary/15 border border-primary/30'
+                          : 'hover:bg-muted/50'
+                      }`}
+                    >
+                      <div className="relative">
+                        <AvatarImage
+                          src={friend.avatar || buildDicebearAvatarUrl(friend.name)}
+                          name={friend.name}
+                          className="size-10 rounded-full"
+                        />
+                        {friend.isOnline && (
+                          <span className="absolute -bottom-0.5 -right-0.5 size-3 rounded-full bg-green-500 border-2 border-background" />
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-foreground truncate">{friend.name}</p>
+                        <p className="text-xs text-muted-foreground truncate">{friend.lastMessage}</p>
+                      </div>
+                    </motion.button>
+                  ))
+                )}
+              </>
             ) : requests.length === 0 ? (
               <p className="text-center text-sm text-muted-foreground py-8">{t('friends.noRequests')}</p>
             ) : (
@@ -365,30 +455,43 @@ function FriendsPage() {
             <>
               <div className="flex items-center gap-3 px-6 py-3 border-b border-border/30">
                 <div className="relative">
-                  <AvatarImage
-                    src={selectedFriend.avatar || buildDicebearAvatarUrl(selectedFriend.name)}
-                    name={selectedFriend.name}
-                    className="size-10 rounded-full"
-                  />
-                  {selectedFriend.isOnline && (
-                    <span className="absolute -bottom-0.5 -right-0.5 size-3 rounded-full bg-green-500 border-2 border-background" />
+                  {selectedFriend.isPinned ? (
+                    <div
+                      className={`size-10 rounded-full flex items-center justify-center bg-gradient-to-br ${selectedFriend.pinnedColor} text-white text-sm font-bold`}
+                    >
+                      {selectedFriend.name.slice(0, 2)}
+                    </div>
+                  ) : (
+                    <>
+                      <AvatarImage
+                        src={selectedFriend.avatar || buildDicebearAvatarUrl(selectedFriend.name)}
+                        name={selectedFriend.name}
+                        className="size-10 rounded-full"
+                      />
+                      {selectedFriend.isOnline && (
+                        <span className="absolute -bottom-0.5 -right-0.5 size-3 rounded-full bg-green-500 border-2 border-background" />
+                      )}
+                    </>
                   )}
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold text-foreground">{selectedFriend.name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {selectedFriend.isOnline ? t('friends.online') : t('friends.offline')}
+                  <p className={`text-xs ${selectedFriend.isPinned ? selectedFriend.pinnedText : 'text-muted-foreground'}`}>
+                    {selectedFriend.isPinned
+                      ? t(`friends.${selectedFriend.pinnedLabel}`)
+                      : (selectedFriend.isOnline ? t('friends.online') : t('friends.offline'))}
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => handleRemoveFriend(selectedFriend.id)}
-                  className="p-2 rounded-lg text-red-400 hover:bg-red-500/10 transition-colors"
-                  title={t('friends.removeFriend')}
-                >
-                  <Trash2 className="size-4" />
-                </button>
-              </div>
+                {!selectedFriend.isPinned && (
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveFriend(selectedFriend.id)}
+                    className="p-2 rounded-lg text-red-400 hover:bg-red-500/10 transition-colors"
+                    title={t('friends.removeFriend')}
+                  >
+                    <Trash2 className="size-4" />
+                  </button>
+                )}
 
               <div className="flex-1 overflow-y-auto p-4 space-y-3">
                 {currentMessages.length === 0 ? (

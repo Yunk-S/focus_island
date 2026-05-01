@@ -360,6 +360,10 @@ export default {
     removeSuccess: 'Friend removed',
     chatWith: 'Chatting with {{name}}',
     autoReply: 'Got it!',
+    pinnedContacts: 'Pinned',
+    aiAssistant: 'AI Assistant — Tips & Help',
+    focusWeekly: 'Weekly Report — Every Sunday',
+    focusMonthly: 'Monthly Report — End of Month',
   },
   pro: {
     title: 'Pro Member',

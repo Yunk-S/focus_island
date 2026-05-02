@@ -102,6 +102,7 @@ function AvatarImage({ src, name, className }) {
 }
 
 function ChatBubble({ message, isSelf, locale }) {
+  const { t } = useI18n();
   return (
     <motion.div
       initial={{ opacity: 0, y: 10, scale: 0.95 }}
@@ -492,6 +493,8 @@ function FriendsPage() {
                     <Trash2 className="size-4" />
                   </button>
                 )}
+
+              </div>
 
               <div className="flex-1 overflow-y-auto p-4 space-y-3">
                 {currentMessages.length === 0 ? (

@@ -189,7 +189,7 @@ function AmbientModePage() {
 
   // ─── Focus session ───────────────────────────────────────────────────────────
   const handleStartFocus = () => {
-    if (!privacyMode && !sessionState) {
+    if (privacyMode) {
       setShowPermissionModal(true);
       return;
     }
